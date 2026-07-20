@@ -1,0 +1,930 @@
+Project: Offline Restaurant Management & POS Android/iOS Application
+
+You are a senior React Native engineer responsible for building a complete offline-first Restaurant Management and Point of Sale (POS) application.
+
+The application will be used primarily on Android tablets at a restaurant cashier point, but during development we will test using normal Android smartphones. The application must also support iOS devices.
+
+The system must be:
+
+Fast
+Reliable
+Fully offline
+Touch friendly
+Responsive to different screen sizes
+Easy for restaurant staff to use
+Maintainable and scalable
+
+The application should be built using:
+
+Expo React Native
+TypeScript
+Expo Router
+SQLite local database
+Zustand state management
+React Native Paper UI components
+Native device storage APIs
+Bluetooth ESC/POS receipt printing
+Business Context
+
+This application is designed for a fast-food restaurant selling products such as:
+
+Chips
+Chicken
+Beef
+Burgers
+Russian
+Sadza
+Rice
+Soft drinks
+Water
+Juice
+Other fast-food items
+
+The restaurant operates in an environment where internet connectivity cannot always be guaranteed.
+
+Therefore:
+
+No cloud dependency
+No online API dependency
+All operations must work locally
+All sales, inventory, users, and settings must be stored in SQLite
+
+Future synchronization can be added later, but the first version must work completely offline.
+
+Core Application Modules
+
+The application consists of:
+
+Authentication & User Management
+Point of Sale (POS)
+Inventory Management
+Product Management
+Recipe Management
+Order Management
+Receipt Printing
+Reports
+System Settings
+Database Backup & Restore
+Technology Requirements
+Frontend
+
+Use:
+
+React Native
+Expo
+TypeScript
+
+Use:
+
+Expo Router for navigation
+Zustand for global state
+React Native Paper for UI components
+
+The UI should follow Material Design principles.
+
+Responsive Design Requirements
+
+The application must support:
+
+Tablet Landscape Mode
+
+Primary usage mode.
+
+Layout:
+
+----------------------------------------------------
+
+Header
+
+----------------------------------------------------
+
+Products Area              Cart Area
+
+
+Product Tiles              Selected Items
+
+Search                     Quantity Controls
+
+Categories                 Payment Options
+
+
+                            Process Order Button
+
+----------------------------------------------------
+Mobile Portrait Mode
+
+During development we will test using smartphones.
+
+The layout should automatically adapt:
+
+Header
+
+Search
+
+Categories
+
+Products
+
+
+Cart Button
+
+
+Cart Screen
+
+Do not create a separate application. Use responsive components.
+
+Application Header
+
+Every screen must have a consistent top header.
+
+Example:
+
+--------------------------------------------------
+
+Restaurant POS
+
+                         🟢 Printer Connected
+
+                         👤 John Doe ▼
+
+--------------------------------------------------
+
+The header must display:
+
+Restaurant name
+Current logged-in user
+Printer connection status
+Current date/time
+User Profile Menu
+
+Clicking the username/avatar opens a menu.
+
+Example:
+
+John Doe
+
+Cashier
+
+
+-------------------
+
+Profile
+
+Change Password
+
+Logout
+
+
+For administrators:
+
+John Doe
+
+Administrator
+
+
+-------------------
+
+Profile
+
+Change Password
+
+User Management
+
+Settings
+
+Logout
+Authentication
+
+Users must login before accessing the system.
+
+User fields:
+
+id
+
+full_name
+
+username
+
+password_hash
+
+role
+
+status
+
+created_at
+
+updated_at
+
+Roles:
+
+ADMIN
+
+CASHIER
+Admin Permissions
+
+Admin can:
+
+Create users
+Disable users
+Enable users
+Reset passwords
+Manage products
+Manage inventory
+Manage currencies
+Manage payment methods
+View reports
+Backup database
+Restore database
+Cashier Permissions
+
+Cashier can:
+
+Login
+Process sales
+View products
+Search products
+Change own password
+Product Management
+
+Products are menu items sold to customers.
+
+Examples:
+
+Chicken Burger
+
+Large Chips
+
+Sadza & Beef
+
+Coca-Cola 300ml
+
+Water 500ml
+
+Product fields:
+
+id
+
+name
+
+category_id
+
+description
+
+tracking_type
+
+active
+
+created_at
+
+updated_at
+IMPORTANT INVENTORY DESIGN
+
+The system must support only TWO inventory tracking methods.
+
+Do NOT add additional tracking methods.
+
+Tracking Method 1: Recipe Based Products
+
+Used for meals prepared by the restaurant.
+
+Examples:
+
+Chips
+Sadza
+Rice
+Burgers
+Chicken meals
+Beef meals
+
+The customer buys a product, but inventory is deducted from ingredients.
+
+Example:
+
+Product:
+
+Chicken Burger
+
+Price:
+$5
+
+Recipe:
+
+Burger Bun       1 piece
+
+Chicken Fillet   150 grams
+
+Mayonnaise       20 ml
+
+Tomato           2 slices
+
+Lettuce          30 grams
+
+When one burger is sold:
+
+Reduce:
+
+Burger Bun -1
+
+Chicken Fillet -150g
+
+Mayonnaise -20ml
+
+Tomato -2 slices
+
+Lettuce -30g
+Tracking Method 2: Direct Stock Products
+
+Used for items purchased and sold directly.
+
+Examples:
+
+Coca-Cola
+Fanta
+Water
+Juice
+
+Example:
+
+Inventory:
+
+Coca-Cola 300ml
+
+Quantity:
+120 bottles
+
+Selling one:
+
+120 -> 119
+Inventory Management
+
+Inventory stores raw materials and direct stock products.
+
+Examples:
+
+Potatoes
+
+Mealie Meal
+
+Rice
+
+Chicken
+
+Beef
+
+Cooking Oil
+
+Salt
+
+Coca-Cola bottles
+
+Water bottles
+
+Inventory fields:
+
+id
+
+name
+
+unit
+
+quantity
+
+minimum_quantity
+
+cost
+
+created_at
+
+updated_at
+
+Units:
+
+kg
+
+grams
+
+litres
+
+ml
+
+pieces
+Stock Movement Tracking
+
+Every stock change must be recorded.
+
+Movement types:
+
+PURCHASE
+
+SALE
+
+ADJUSTMENT
+
+Example:
+
+Potatoes
+
+Previous:
+100kg
+
+Used:
+10kg
+
+Remaining:
+90kg
+
+Reason:
+Sales
+
+Date:
+20 July 2026
+Stock Adjustment
+
+Admin can manually adjust inventory.
+
+Reasons:
+
+Spoilage
+Damage
+Stock count correction
+Wastage
+
+Every adjustment must record:
+
+User
+
+Date
+
+Old quantity
+
+New quantity
+
+Reason
+POS SCREEN
+
+The POS is the main cashier screen.
+
+Layout:
+
+Search Products
+
+
+Categories
+
+
+------------------------------------------------
+
+Product Tiles
+
+
+------------------------------------------------
+
+
+Cart
+
+Item
+
+Qty + -
+
+Remove
+
+
+Subtotal
+
+Total
+
+
+Payment Methods
+
+
+Process Order
+
+Product Tiles
+
+Product tiles must NOT contain emojis or images.
+
+Design:
+
+--------------------
+
+Chicken Burger
+
+
+USD 5.00
+
+
+--------------------
+
+Tiles should be:
+
+Large
+Touch friendly
+Fast loading
+Out Of Stock Products
+
+Products that cannot be sold must remain visible.
+
+Display:
+
+---------------------
+
+Chicken Burger
+
+
+USD 5.00
+
+
+[OUT OF STOCK]
+
+
+---------------------
+
+Rules:
+
+Red badge
+Disabled tile
+Cannot be selected
+Search
+
+Search products by:
+
+Product name
+Category
+
+Search results must update immediately.
+
+Cart
+
+Cart items:
+
+Chicken Burger
+
+Qty: 2
+
+-
+
++
+
+Remove
+Payment Methods
+
+Supported:
+
+Cash
+Card
+Ecocash
+
+Admin controls which payment methods are active.
+
+Database:
+
+payment_methods
+
+id
+
+name
+
+enabled
+
+Example:
+
+Cash       ENABLED
+
+Card       DISABLED
+
+Ecocash    ENABLED
+
+Disabled payment methods do not appear at checkout.
+
+Multi Currency Support
+
+Currencies are database driven.
+
+Example:
+
+USD
+
+ZiG
+
+ZAR
+
+Currency table:
+
+id
+
+name
+
+symbol
+
+enabled
+
+Admin can enable or disable currencies.
+
+Products have prices per currency.
+
+Example:
+
+Chicken Burger
+
+
+USD:
+5
+
+
+ZiG:
+150
+Order Processing Workflow
+
+When cashier presses:
+
+PROCESS ORDER
+
+Show confirmation:
+
+Are you sure?
+
+YES
+
+NO
+
+If YES:
+
+Start 5 second timer.
+
+Example:
+
+Printing in:
+
+5
+
+UNDO
+
+During countdown:
+
+Allow cancellation
+
+After countdown:
+
+Save order
+Generate order number
+Deduct inventory
+Print receipts
+Order Numbering
+
+Order numbers reset every day.
+
+Example:
+
+20 July:
+
+Order 1
+
+Order 2
+
+Order 3
+
+21 July:
+
+Order 1
+
+Order 2
+
+Maintain a daily counter.
+
+Database:
+
+daily_order_counter
+
+date
+
+last_number
+Bluetooth Receipt Printing
+
+Use ESC/POS compatible Bluetooth printers.
+
+The application must detect:
+
+Printer connected
+Printer disconnected
+
+Display in header:
+
+🟢 Printer Connected
+
+or
+
+🔴 Printer Disconnected
+Printing Rules
+
+Every completed order prints TWO receipts.
+
+Receipt 1: Customer Receipt
+
+Contains:
+
+Restaurant Name
+
+Logo
+
+Address
+
+Phone
+
+
+Order Number
+
+Date
+
+Time
+
+Cashier
+
+
+Products
+
+Quantity
+
+Prices
+
+
+Subtotal
+
+Total
+
+
+Payment Method
+
+
+Thank You
+
+
+Crafted with ❤️ by Fariwe
+Receipt 2: Restaurant Copy
+
+Contains:
+
+RESTAURANT COPY
+
+
+Order Number
+
+
+Products
+
+Quantity
+
+
+Cashier
+
+
+Date
+
+Time
+
+Do not include prices.
+
+Database Backup
+
+Admin can export the entire SQLite database.
+
+Example:
+
+RestaurantPOS_20260720.sqlite
+
+Save locally:
+
+Device Storage
+
+/Documents/RestaurantPOS/Backups/
+
+Features:
+
+Export Database
+
+Restore Database
+Reports
+
+Include:
+
+Daily Sales
+
+Monthly Sales
+
+Sales By Product
+
+Sales By Cashier
+
+Payment Method Report
+
+Inventory Report
+
+Low Stock Report
+
+Database Tables
+
+Create SQLite migrations for:
+
+users
+
+roles
+
+products
+
+categories
+
+inventory_items
+
+recipes
+
+recipe_items
+
+orders
+
+order_items
+
+stock_movements
+
+currencies
+
+product_prices
+
+payment_methods
+
+settings
+
+daily_order_counter
+
+printer_settings
+
+audit_logs
+Development Approach
+
+Build the application incrementally.
+
+Phase 1:
+
+Project setup
+Navigation
+Theme
+SQLite setup
+Authentication
+
+Phase 2:
+
+User management
+Products
+Categories
+
+Phase 3:
+
+Inventory
+Recipes
+
+Phase 4:
+
+POS screen
+Cart
+Checkout
+
+Phase 5:
+
+Bluetooth printing
+
+Phase 6:
+
+Reports
+Backup
+Settings
+Coding Standards
+
+Follow:
+
+Clean architecture
+Reusable components
+TypeScript types everywhere
+No duplicated logic
+Proper error handling
+Comments for complex business logic
+
+Create:
+
+components/
+
+screens/
+
+database/
+
+services/
+
+stores/
+
+hooks/
+
+types/
+
+utils/
+Final Goal
+
+Build a professional offline restaurant POS system that can run on Android tablets and iOS devices, allowing restaurant staff to sell food quickly, manage inventory accurately through recipes, print receipts through Bluetooth printers, and operate without internet connectivity.
+
+Do not build a demo. Build it as a real production-ready restaurant application.
