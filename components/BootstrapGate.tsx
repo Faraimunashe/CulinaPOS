@@ -3,6 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import { ActivityIndicator, Text } from 'react-native-paper';
 import { initializeDatabase } from '@/database';
 import { useAuthStore } from '@/stores/authStore';
+import { usePrinterStore } from '@/stores/printerStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { colors } from '@/theme';
 
@@ -15,6 +16,7 @@ export function BootstrapGate({ children }: BootstrapGateProps) {
   const [bootError, setBootError] = useState<string | null>(null);
   const hydrate = useAuthStore((s) => s.hydrate);
   const loadSettings = useSettingsStore((s) => s.loadSettings);
+  const hydratePrinter = usePrinterStore((s) => s.hydrate);
 
   useEffect(() => {
     let cancelled = false;
@@ -23,6 +25,8 @@ export function BootstrapGate({ children }: BootstrapGateProps) {
       try {
         await initializeDatabase();
         await Promise.all([hydrate(), loadSettings()]);
+        // Printer restore is best-effort; never block app start
+        void hydratePrinter();
         if (!cancelled) {
           setReady(true);
         }
@@ -40,7 +44,7 @@ export function BootstrapGate({ children }: BootstrapGateProps) {
     return () => {
       cancelled = true;
     };
-  }, [hydrate, loadSettings]);
+  }, [hydrate, hydratePrinter, loadSettings]);
 
   if (bootError) {
     return (

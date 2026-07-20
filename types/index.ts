@@ -45,6 +45,13 @@ export interface Currency {
   rate_to_primary: number;
 }
 
+export interface CurrencyInput {
+  name: string;
+  symbol: string;
+  rate_to_primary: number;
+  enabled: boolean;
+}
+
 export interface ConvertedPrice {
   currency_id: number;
   currency_name: string;
@@ -168,6 +175,82 @@ export interface InventoryItemInput {
 export interface RecipeItemInput {
   inventory_item_id: number;
   quantity: number;
+}
+
+export interface PaymentMethod {
+  id: number;
+  name: string;
+  enabled: number;
+}
+
+export interface CartLine {
+  product_id: number;
+  product_name: string;
+  tracking_type: TrackingType;
+  quantity: number;
+  unit_price: number;
+  max_quantity: number;
+}
+
+export interface OrderItem {
+  id: number;
+  order_id: number;
+  product_id: number;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+}
+
+export type OrderStatus = 'COMPLETED' | 'REVERSED';
+
+export interface Order {
+  id: number;
+  order_number: number;
+  order_date: string;
+  cashier_id: number;
+  payment_method_id: number | null;
+  currency_id: number | null;
+  subtotal: number;
+  total: number;
+  status: OrderStatus | string;
+  created_at: string;
+  cashier_name?: string;
+  payment_method_name?: string | null;
+  currency_name?: string | null;
+  currency_symbol?: string | null;
+  items?: OrderItem[];
+  item_count?: number;
+}
+
+export interface ListOrdersFilters {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  cashierId?: number | null;
+  currencyId?: number | null;
+  /** Matches daily order number or internal id */
+  saleReference?: string | null;
+  status?: OrderStatus | null;
+}
+
+export interface SalesTotalByCurrency {
+  currency_id: number | null;
+  currency_name: string;
+  currency_symbol: string;
+  total: number;
+  order_count: number;
+}
+
+export interface CheckoutInput {
+  cashierId: number;
+  paymentMethodId: number;
+  currencyId: number;
+  lines: CartLine[];
+}
+
+export interface PosProduct extends Product {
+  in_stock: boolean;
+  max_quantity: number;
 }
 
 export * from './user';

@@ -28,3 +28,25 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
 export async function initializeDatabase(): Promise<void> {
   await getDatabase();
 }
+
+/** Close the shared connection so the file can be replaced (backup restore). */
+export async function closeDatabase(): Promise<string | null> {
+  let path: string | null = database?.databasePath ?? null;
+
+  if (initPromise && !database) {
+    const db = await initPromise;
+    path = db.databasePath;
+    await db.closeAsync();
+  } else if (database) {
+    await database.closeAsync();
+  }
+
+  database = null;
+  initPromise = null;
+  return path;
+}
+
+export async function reopenDatabase(): Promise<SQLite.SQLiteDatabase> {
+  await closeDatabase();
+  return getDatabase();
+}

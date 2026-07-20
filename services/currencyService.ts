@@ -1,7 +1,40 @@
 import { getDatabase } from '@/database';
 import { writeAuditLog } from '@/services/auditService';
 import { SETTINGS_KEYS } from '@/utils/constants';
-import type { ConvertedPrice, Currency } from '@/types';
+import type { ConvertedPrice, Currency, CurrencyInput } from '@/types';
+
+function normalizeCurrencyName(name: string): string {
+  return name.trim();
+}
+
+function normalizeCurrencySymbol(symbol: string): string {
+  return symbol.trim();
+}
+
+function validateCurrencyInput(
+  input: CurrencyInput,
+  options?: { requireRate?: boolean }
+): { name: string; symbol: string; rate: number; enabled: boolean } {
+  const name = normalizeCurrencyName(input.name);
+  const symbol = normalizeCurrencySymbol(input.symbol);
+  if (!name) throw new Error('Currency name is required');
+  if (!symbol) throw new Error('Currency symbol is required');
+  if (name.length > 16) throw new Error('Currency name is too long');
+  if (symbol.length > 8) throw new Error('Currency symbol is too long');
+
+  const requireRate = options?.requireRate ?? true;
+  const rate = input.rate_to_primary;
+  if (requireRate && (!Number.isFinite(rate) || rate <= 0)) {
+    throw new Error('Rate must be a number greater than zero');
+  }
+
+  return {
+    name,
+    symbol,
+    rate: Number.isFinite(rate) && rate > 0 ? rate : 1,
+    enabled: input.enabled,
+  };
+}
 
 export async function listCurrencies(options?: {
   enabledOnly?: boolean;
@@ -15,6 +48,109 @@ export async function listCurrencies(options?: {
   return db.getAllAsync<Currency>(
     'SELECT * FROM currencies ORDER BY id ASC'
   );
+}
+
+export async function getCurrencyById(id: number): Promise<Currency | null> {
+  const db = await getDatabase();
+  return db.getFirstAsync<Currency>(
+    'SELECT * FROM currencies WHERE id = ?',
+    id
+  );
+}
+
+export async function createCurrency(
+  input: CurrencyInput,
+  actorId: number
+): Promise<Currency> {
+  const { name, symbol, rate, enabled } = validateCurrencyInput(input);
+
+  const db = await getDatabase();
+  const duplicate = await db.getFirstAsync<{ id: number }>(
+    'SELECT id FROM currencies WHERE LOWER(name) = LOWER(?)',
+    name
+  );
+  if (duplicate) {
+    throw new Error('A currency with this name already exists');
+  }
+
+  const result = await db.runAsync(
+    `INSERT INTO currencies (name, symbol, enabled, rate_to_primary)
+     VALUES (?, ?, ?, ?)`,
+    name,
+    symbol,
+    enabled ? 1 : 0,
+    rate
+  );
+
+  const id = Number(result.lastInsertRowId);
+  await writeAuditLog({
+    userId: actorId,
+    action: 'CURRENCY_CREATE',
+    entityType: 'currency',
+    entityId: id,
+    details: { name, symbol, rate, enabled },
+  });
+
+  const created = await getCurrencyById(id);
+  if (!created) throw new Error('Failed to create currency');
+  return created;
+}
+
+export async function updateCurrency(
+  id: number,
+  input: CurrencyInput,
+  actorId: number
+): Promise<Currency> {
+  const primaryId = await getPrimaryCurrencyId();
+  const isPrimary = id === primaryId;
+  const { name, symbol, rate, enabled } = validateCurrencyInput(input, {
+    requireRate: !isPrimary,
+  });
+
+  if (isPrimary && !enabled) {
+    throw new Error('Cannot disable the primary currency');
+  }
+
+  const db = await getDatabase();
+  const current = await getCurrencyById(id);
+  if (!current) throw new Error('Currency not found');
+
+  const duplicate = await db.getFirstAsync<{ id: number }>(
+    'SELECT id FROM currencies WHERE LOWER(name) = LOWER(?) AND id != ?',
+    name,
+    id
+  );
+  if (duplicate) {
+    throw new Error('A currency with this name already exists');
+  }
+
+  await db.runAsync(
+    `UPDATE currencies
+     SET name = ?, symbol = ?, enabled = ?, rate_to_primary = ?
+     WHERE id = ?`,
+    name,
+    symbol,
+    enabled ? 1 : 0,
+    isPrimary ? 1 : rate,
+    id
+  );
+
+  await writeAuditLog({
+    userId: actorId,
+    action: 'CURRENCY_UPDATE',
+    entityType: 'currency',
+    entityId: id,
+    details: {
+      name,
+      symbol,
+      rate: isPrimary ? 1 : rate,
+      enabled,
+    },
+  });
+
+  const updated = await getCurrencyById(id);
+  if (!updated) throw new Error('Currency not found after update');
+  return updated;
 }
 
 export async function getPrimaryCurrencyId(): Promise<number> {

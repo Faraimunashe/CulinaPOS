@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { APP_NAME, SETTINGS_KEYS } from '@/utils/constants';
-import { getSetting } from '@/services/authService';
+import { APP_NAME } from '@/utils/constants';
+import * as settingsService from '@/services/settingsService';
 
 interface SettingsState {
   restaurantName: string;
@@ -14,9 +14,9 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   isLoaded: false,
 
   loadSettings: async () => {
-    const name = await getSetting(SETTINGS_KEYS.restaurantName);
+    const settings = await settingsService.getRestaurantSettings();
     set({
-      restaurantName: name?.trim() || APP_NAME,
+      restaurantName: settings.restaurantName,
       isLoaded: true,
     });
   },

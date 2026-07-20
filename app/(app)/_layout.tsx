@@ -1,5 +1,6 @@
 import { Redirect, Stack, useRouter } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
+import { AppDrawer } from '@/components/AppDrawer';
 import { AppHeader } from '@/components/AppHeader';
 import { useAuthStore } from '@/stores/authStore';
 import { colors } from '@/theme';
@@ -27,6 +28,7 @@ export default function AppLayout() {
           },
         }}
       />
+      <AppDrawer />
     </View>
   );
 }

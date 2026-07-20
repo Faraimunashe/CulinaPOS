@@ -1,16 +1,15 @@
-Phases 1–3 are done. You’re ready for Phase 4 (POS).
+Phases 1–6 are implemented. Bluetooth printing needs a custom development build (not Expo Go).
 
 Done
-Phase 1: Expo app, nav, theme, SQLite, auth/login, header (clock, printer status, user menu)
+Phase 1: Expo app, nav, theme, SQLite, auth/login, header
 Phase 2: Users, categories, products, multi-currency pricing
-Phase 3: Inventory (retail + ingredients), receive/adjust stock, recipes for recipe products
-UX polish: Card UIs, Add stock / Adjust bottom sheets, cleaner production copy, pieces → units
-Left
-Phase	What’s left
-4 – POS
-Sell screen (tablet split / phone cart), cart, checkout + undo, daily order numbers, stock deduction, payments
-5 – Printing
-Bluetooth ESC/POS, dual receipts
-6 – Ops
-Reports, backup/restore, settings
-Home still shows Point of Sale → Coming soon — that’s the next build.
+Phase 3: Inventory (retail + ingredients), receive/adjust stock, recipes
+Phase 4: POS sell screen, cart, checkout + undo, daily order numbers, stock deduction
+Phase 5: Bluetooth ESC/POS dual receipts; skip print when offline; Printer screen; header status
+Phase 6: Settings, reports, database backup/restore
+Also
+Sales history: list/filter, detail, reprint, admin reverse + stock restore
+
+Notes
+- Printer uses react-native-thermal-printer-driver (dev client / prebuild required)
+- Checkout always saves the sale; printing is best-effort when connected

@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
   HelperText,
   Snackbar,
+  Switch,
   Text,
   TextInput,
 } from 'react-native-paper';
@@ -17,6 +18,8 @@ import * as currencyService from '@/services/currencyService';
 import { colors } from '@/theme';
 import type { Currency } from '@/types';
 
+type FormMode = 'create' | 'edit' | 'rate';
+
 export function CurrenciesScreen() {
   const isAdmin = useRequireAdmin();
   const actorId = useAuthStore((s) => s.user?.id);
@@ -25,8 +28,14 @@ export function CurrenciesScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [snack, setSnack] = useState<string | null>(null);
-  const [rateTarget, setRateTarget] = useState<Currency | null>(null);
-  const [rateValue, setRateValue] = useState('');
+
+  const [formMode, setFormMode] = useState<FormMode | null>(null);
+  const [formTarget, setFormTarget] = useState<Currency | null>(null);
+  const [formName, setFormName] = useState('');
+  const [formSymbol, setFormSymbol] = useState('');
+  const [formRate, setFormRate] = useState('1');
+  const [formEnabled, setFormEnabled] = useState(true);
+  const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -56,6 +65,45 @@ export function CurrenciesScreen() {
     () => currencies.find((c) => c.id === primaryId)?.name ?? 'Primary',
     [currencies, primaryId]
   );
+
+  const closeForm = () => {
+    if (saving) return;
+    setFormMode(null);
+    setFormTarget(null);
+    setFormError(null);
+  };
+
+  const openCreate = () => {
+    setFormMode('create');
+    setFormTarget(null);
+    setFormName('');
+    setFormSymbol('');
+    setFormRate('1');
+    setFormEnabled(true);
+    setFormError(null);
+  };
+
+  const openEdit = (currency: Currency) => {
+    setFormMode('edit');
+    setFormTarget(currency);
+    setFormName(currency.name);
+    setFormSymbol(currency.symbol);
+    setFormRate(String(currency.rate_to_primary));
+    setFormEnabled(currency.enabled === 1);
+    setFormError(null);
+  };
+
+  const openRate = (currency: Currency) => {
+    setFormMode('rate');
+    setFormTarget(currency);
+    setFormRate(String(currency.rate_to_primary));
+    setFormError(null);
+  };
+
+  useEffect(() => {
+    if (!formMode) return;
+    setFormError(null);
+  }, [formName, formSymbol, formRate, formEnabled, formMode]);
 
   if (!isAdmin) return null;
 
@@ -89,31 +137,113 @@ export function CurrenciesScreen() {
     }
   };
 
-  const saveRate = async () => {
-    if (!actorId || !rateTarget) return;
+  const saveForm = async () => {
+    if (!actorId || !formMode) return;
     setSaving(true);
+    setFormError(null);
     try {
-      await currencyService.updateCurrencyRate(
-        rateTarget.id,
-        Number.parseFloat(rateValue),
-        actorId
-      );
-      setSnack(`Updated ${rateTarget.name} rate`);
-      setRateTarget(null);
+      if (formMode === 'rate') {
+        if (!formTarget) return;
+        await currencyService.updateCurrencyRate(
+          formTarget.id,
+          Number.parseFloat(formRate),
+          actorId
+        );
+        setSnack(`Updated ${formTarget.name} rate`);
+      } else if (formMode === 'create') {
+        const created = await currencyService.createCurrency(
+          {
+            name: formName,
+            symbol: formSymbol,
+            rate_to_primary: Number.parseFloat(formRate),
+            enabled: formEnabled,
+          },
+          actorId
+        );
+        setSnack(`Added ${created.name}`);
+      } else if (formMode === 'edit' && formTarget) {
+        const isPrimary = formTarget.id === primaryId;
+        const updated = await currencyService.updateCurrency(
+          formTarget.id,
+          {
+            name: formName,
+            symbol: formSymbol,
+            rate_to_primary: isPrimary
+              ? 1
+              : Number.parseFloat(formRate),
+            enabled: formEnabled,
+          },
+          actorId
+        );
+        setSnack(`Updated ${updated.name}`);
+      }
+      setFormMode(null);
+      setFormTarget(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Rate update failed');
+      setFormError(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSaving(false);
     }
   };
 
+  const formTitle =
+    formMode === 'create'
+      ? 'New currency'
+      : formMode === 'edit'
+        ? `Edit · ${formTarget?.name ?? 'Currency'}`
+        : formMode === 'rate'
+          ? `Rate · ${formTarget?.name ?? ''}`
+          : '';
+
+  const primaryLabel =
+    formMode === 'create'
+      ? saving
+        ? 'Creating…'
+        : 'Add currency'
+      : saving
+        ? 'Saving…'
+        : 'Save';
+
+  const editingPrimary =
+    formMode === 'edit' && formTarget?.id === primaryId;
+
+  const canSave =
+    formMode === 'rate'
+      ? !!formRate.trim()
+      : !!formName.trim() &&
+        !!formSymbol.trim() &&
+        (editingPrimary || !!formRate.trim());
+
   return (
     <View style={styles.root}>
       <View style={styles.hero}>
-        <Text variant="headlineSmall" style={styles.heroTitle}>
-          Currencies
-        </Text>
+        <View style={styles.heroRow}>
+          <View style={styles.heroCopy}>
+            <Text variant="headlineSmall" style={styles.heroTitle}>
+              Currencies
+            </Text>
+            <Text style={styles.heroSubtitle}>
+              Prices convert from {primaryName}
+            </Text>
+          </View>
+          <Pressable
+            onPress={openCreate}
+            style={({ pressed }) => [
+              styles.addBtn,
+              pressed && styles.addBtnPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Add currency"
+          >
+            <MaterialCommunityIcons
+              name="plus"
+              size={20}
+              color={colors.onPrimary}
+            />
+            <Text style={styles.addBtnText}>Add</Text>
+          </Pressable>
+        </View>
       </View>
 
       {loading ? (
@@ -123,6 +253,14 @@ export function CurrenciesScreen() {
           data={currencies}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.list}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>No currencies yet</Text>
+              <Text style={styles.emptyBody}>
+                Add USD, ZiG, or any other currency you accept.
+              </Text>
+            </View>
+          }
           renderItem={({ item }) => {
             const isPrimary = item.id === primaryId;
             const enabled = item.enabled === 1;
@@ -138,7 +276,7 @@ export function CurrenciesScreen() {
                     </Text>
                     <Text style={styles.cardMeta}>
                       {isPrimary
-                        ? 'Primary · 1.00'
+                        ? 'Primary · rate 1.00'
                         : `1 ${primaryName} = ${item.rate_to_primary} ${item.name}`}
                     </Text>
                   </View>
@@ -167,14 +305,20 @@ export function CurrenciesScreen() {
                 </View>
 
                 <View style={styles.actions}>
+                  <Button
+                    mode="contained-tonal"
+                    compact
+                    icon="pencil"
+                    onPress={() => openEdit(item)}
+                    style={styles.actionBtn}
+                  >
+                    Edit
+                  </Button>
                   {!isPrimary ? (
                     <Button
-                      mode="contained-tonal"
+                      mode="outlined"
                       compact
-                      onPress={() => {
-                        setRateValue(String(item.rate_to_primary));
-                        setRateTarget(item);
-                      }}
+                      onPress={() => openRate(item)}
                       style={styles.actionBtn}
                     >
                       Rate
@@ -192,6 +336,7 @@ export function CurrenciesScreen() {
                   <Button
                     mode="outlined"
                     compact
+                    disabled={isPrimary}
                     onPress={() => void toggleEnabled(item)}
                     style={styles.actionBtn}
                   >
@@ -211,22 +356,104 @@ export function CurrenciesScreen() {
       ) : null}
 
       <BottomSheetModal
-        visible={!!rateTarget}
-        title={rateTarget ? `Rate · ${rateTarget.name}` : 'Rate'}
-        onDismiss={() => setRateTarget(null)}
-        primaryLabel="Save"
-        onPrimary={() => void saveRate()}
+        visible={formMode != null}
+        title={formTitle}
+        onDismiss={closeForm}
+        primaryLabel={primaryLabel}
+        onPrimary={() => void saveForm()}
         primaryLoading={saving}
-        primaryDisabled={!rateValue.trim()}
+        primaryDisabled={!canSave || saving}
       >
-        <TextInput
-          label="Rate"
-          mode="outlined"
-          keyboardType="decimal-pad"
-          value={rateValue}
-          onChangeText={setRateValue}
-          style={styles.sheetInput}
-        />
+        {formMode === 'rate' ? (
+          <>
+            <Text style={styles.sheetHint}>
+              How many {formTarget?.name} equal 1 {primaryName}?
+            </Text>
+            <TextInput
+              label={`Rate to ${primaryName}`}
+              mode="outlined"
+              keyboardType="decimal-pad"
+              value={formRate}
+              onChangeText={setFormRate}
+              style={styles.sheetInput}
+              outlineStyle={styles.sheetOutline}
+              disabled={saving}
+            />
+          </>
+        ) : (
+          <>
+            <Text style={styles.sheetHint}>
+              {formMode === 'create'
+                ? 'Name and symbol appear on prices and receipts.'
+                : 'Update how this currency is labeled and converted.'}
+            </Text>
+            <TextInput
+              label="Name"
+              mode="outlined"
+              value={formName}
+              onChangeText={setFormName}
+              placeholder="e.g. USD, ZiG, EUR"
+              autoCapitalize="characters"
+              style={styles.sheetInput}
+              outlineStyle={styles.sheetOutline}
+              disabled={saving}
+            />
+            <TextInput
+              label="Symbol"
+              mode="outlined"
+              value={formSymbol}
+              onChangeText={setFormSymbol}
+              placeholder="e.g. $, ZiG, €"
+              style={styles.sheetInput}
+              outlineStyle={styles.sheetOutline}
+              disabled={saving}
+            />
+            {!editingPrimary ? (
+              <TextInput
+                label={`Rate to ${primaryName}`}
+                mode="outlined"
+                keyboardType="decimal-pad"
+                value={formRate}
+                onChangeText={setFormRate}
+                style={styles.sheetInput}
+                outlineStyle={styles.sheetOutline}
+                disabled={saving}
+              />
+            ) : (
+              <View style={styles.primaryNote}>
+                <MaterialCommunityIcons
+                  name="information-outline"
+                  size={18}
+                  color={colors.primary}
+                />
+                <Text style={styles.primaryNoteText}>
+                  Primary currency rate is always 1. Convert other currencies
+                  against this one.
+                </Text>
+              </View>
+            )}
+            <View style={styles.switchRow}>
+              <View style={styles.switchCopy}>
+                <Text style={styles.switchTitle}>Enabled</Text>
+                <Text style={styles.switchHint}>
+                  Disabled currencies stay off the POS and product prices.
+                </Text>
+              </View>
+              <Switch
+                value={formEnabled}
+                onValueChange={setFormEnabled}
+                color={colors.primary}
+                disabled={saving || editingPrimary}
+              />
+            </View>
+          </>
+        )}
+
+        {formError ? (
+          <HelperText type="error" visible>
+            {formError}
+          </HelperText>
+        ) : null}
       </BottomSheetModal>
 
       <Snackbar visible={!!snack} onDismiss={() => setSnack(null)} duration={2500}>
@@ -243,9 +470,40 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 12,
   },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  heroCopy: {
+    flex: 1,
+  },
   heroTitle: {
     color: colors.primary,
     fontWeight: '800',
+  },
+  heroSubtitle: {
+    marginTop: 4,
+    color: colors.onBackground,
+    opacity: 0.6,
+    fontSize: 13,
+  },
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  addBtnPressed: {
+    opacity: 0.88,
+  },
+  addBtnText: {
+    color: colors.onPrimary,
+    fontWeight: '700',
   },
   list: {
     paddingHorizontal: 16,
@@ -253,6 +511,22 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loader: { marginTop: 40 },
+  empty: {
+    paddingTop: 48,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  emptyTitle: {
+    color: colors.primary,
+    fontWeight: '800',
+    fontSize: 16,
+  },
+  emptyBody: {
+    marginTop: 6,
+    textAlign: 'center',
+    opacity: 0.6,
+    lineHeight: 20,
+  },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 16,
@@ -325,8 +599,59 @@ const styles = StyleSheet.create({
   },
   actionBtn: { borderRadius: 10 },
   error: { marginHorizontal: 16 },
+  sheetHint: {
+    color: colors.onSurface,
+    opacity: 0.6,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
   sheetInput: {
     backgroundColor: colors.surface,
-    marginBottom: 8,
+    marginBottom: 10,
+  },
+  sheetOutline: {
+    borderRadius: 12,
+  },
+  primaryNote: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'flex-start',
+    backgroundColor: colors.primaryContainer,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+  },
+  primaryNoteText: {
+    flex: 1,
+    color: colors.primary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    backgroundColor: colors.surfaceVariant,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  switchCopy: {
+    flex: 1,
+  },
+  switchTitle: {
+    fontWeight: '800',
+    color: colors.primary,
+    fontSize: 14,
+  },
+  switchHint: {
+    marginTop: 2,
+    fontSize: 12,
+    color: colors.onSurface,
+    opacity: 0.55,
+    lineHeight: 16,
   },
 });
