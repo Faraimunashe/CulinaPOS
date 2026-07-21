@@ -18,6 +18,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import * as printService from '@/services/printService';
 import * as printerSettingsService from '@/services/printerSettingsService';
+import { openAppPermissionSettings } from '@/services/bluetoothPermissions';
 import { usePrinterStore } from '@/stores/printerStore';
 import { colors } from '@/theme';
 import type { PrinterDevice } from '@/services/printService';
@@ -226,6 +227,7 @@ export function PrinterScreen() {
         </View>
         <Text style={styles.hint}>
           Pair the printer in Android/iOS Bluetooth settings, then scan here.
+          On Android, allow Nearby devices (and Location if prompted) when asked.
           Requires a development build (not Expo Go).
         </Text>
 
@@ -282,9 +284,20 @@ export function PrinterScreen() {
       </View>
 
       {error ? (
-        <HelperText type="error" visible style={styles.error}>
-          {error}
-        </HelperText>
+        <View style={styles.errorBlock}>
+          <HelperText type="error" visible style={styles.error}>
+            {error}
+          </HelperText>
+          {error.toLowerCase().includes('settings') ? (
+            <Button
+              mode="outlined"
+              onPress={() => void openAppPermissionSettings()}
+              style={styles.settingsBtn}
+            >
+              Open app settings
+            </Button>
+          ) : null}
+        </View>
       ) : null}
 
       <Snackbar visible={!!snack} onDismiss={() => setSnack(null)} duration={2800}>
@@ -450,4 +463,6 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   error: { marginTop: 4 },
+  errorBlock: { marginTop: 4, gap: 8 },
+  settingsBtn: { borderRadius: 12, alignSelf: 'flex-start' },
 });

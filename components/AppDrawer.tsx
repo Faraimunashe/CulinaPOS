@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -316,10 +317,11 @@ export function AppDrawer() {
         >
           <View style={styles.brand}>
             <View style={styles.brandMark}>
-              <MaterialCommunityIcons
-                name="silverware-fork-knife"
-                size={22}
-                color={colors.onPrimary}
+              <Image
+                source={require('../assets/mylogo-no-bg.png')}
+                style={styles.brandLogo}
+                resizeMode="contain"
+                accessibilityLabel="Culina POS logo"
               />
             </View>
             <View style={styles.brandCopy}>
@@ -483,9 +485,13 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 14,
-    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  brandLogo: {
+    width: 42,
+    height: 42,
   },
   brandCopy: {
     flex: 1,

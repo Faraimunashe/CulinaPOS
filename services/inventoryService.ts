@@ -431,6 +431,23 @@ export async function listStockMovements(
   );
 }
 
+/** Low-stock items whose quantity was reduced by a specific completed sale. */
+export async function listLowStockItemsForOrder(
+  orderId: number
+): Promise<InventoryItem[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<InventoryItem>(
+    `SELECT DISTINCT i.*
+     FROM inventory_items i
+     INNER JOIN stock_movements sm ON sm.inventory_item_id = i.id
+     WHERE sm.order_id = ?
+       AND sm.movement_type = 'SALE'
+       AND i.quantity <= i.minimum_quantity
+     ORDER BY i.quantity ASC, i.name COLLATE NOCASE ASC`,
+    orderId
+  );
+}
+
 export function isLowStock(item: InventoryItem): boolean {
   return item.quantity <= item.minimum_quantity;
 }

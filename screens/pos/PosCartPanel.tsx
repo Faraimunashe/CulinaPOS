@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { Button, Text } from 'react-native-paper';
+import { Button, Snackbar, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useCartStore } from '@/stores/cartStore';
 import { formatMoney } from '@/utils/formatMoney';
@@ -21,6 +22,7 @@ export function PosCartPanel({
   onCheckout,
   compact = false,
 }: PosCartPanelProps) {
+  const [stockWarning, setStockWarning] = useState<string | null>(null);
   const lines = useCartStore((s) => s.lines);
   const currencyId = useCartStore((s) => s.currencyId);
   const paymentMethodId = useCartStore((s) => s.paymentMethodId);
@@ -107,12 +109,27 @@ export function PosCartPanel({
                   </Pressable>
                   <Text style={styles.qtyValue}>{line.quantity}</Text>
                   <Pressable
-                    onPress={() => increment(line.product_id)}
+                    onPress={() => {
+                      if (line.quantity >= line.max_quantity) {
+                        const stockName =
+                          line.limiting_stock_name ?? line.product_name;
+                        const availability =
+                          line.max_quantity <= 0
+                            ? 'out of stock'
+                            : `only ${line.max_quantity} unit${
+                                line.max_quantity === 1 ? '' : 's'
+                              } of ${line.product_name} available`;
+                        setStockWarning(
+                          `Insufficient ${stockName}: ${availability}.`
+                        );
+                        return;
+                      }
+                      increment(line.product_id);
+                    }}
                     style={[
                       styles.qtyBtn,
                       line.quantity >= line.max_quantity && styles.qtyBtnDisabled,
                     ]}
-                    disabled={line.quantity >= line.max_quantity}
                   >
                     <MaterialCommunityIcons
                       name="plus"
@@ -198,6 +215,15 @@ export function PosCartPanel({
           Process order
         </Button>
       </View>
+
+      <Snackbar
+        visible={!!stockWarning}
+        onDismiss={() => setStockWarning(null)}
+        duration={3500}
+        style={styles.errorSnackbar}
+      >
+        {stockWarning}
+      </Snackbar>
     </View>
   );
 }
@@ -394,5 +420,8 @@ const styles = StyleSheet.create({
   checkoutLabel: {
     fontWeight: '800',
     fontSize: 16,
+  },
+  errorSnackbar: {
+    backgroundColor: colors.error,
   },
 });

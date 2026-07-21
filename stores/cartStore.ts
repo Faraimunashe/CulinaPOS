@@ -52,6 +52,7 @@ export const useCartStore = create<CartState>((set, get) => ({
           product_id: product.id,
           product_name: product.name,
           tracking_type: product.tracking_type,
+          limiting_stock_name: product.limiting_stock_name,
           quantity: 1,
           unit_price: unitPrice,
           max_quantity: product.max_quantity,

@@ -26,7 +26,6 @@ export function ProductTile({
   return (
     <Pressable
       onPress={onPress}
-      disabled={out}
       style={({ pressed }) => [
         styles.tile,
         out && styles.tileOut,

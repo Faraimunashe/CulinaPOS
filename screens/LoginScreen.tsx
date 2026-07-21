@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   View,
+  Image,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
@@ -61,10 +62,11 @@ export function LoginScreen() {
         entering={mounted ? FadeIn.duration(500) : undefined}
         style={styles.mark}
       >
-        <MaterialCommunityIcons
-          name="silverware-fork-knife"
-          size={split ? 36 : 30}
-          color={colors.onPrimary}
+        <Image
+          source={require('../assets/mylogo-no-bg.png')}
+          style={[styles.brandLogo, split && styles.brandLogoSplit]}
+          resizeMode="contain"
+          accessibilityLabel="Culina POS logo"
         />
       </Animated.View>
 
@@ -222,7 +224,7 @@ export function LoginScreen() {
           <View style={styles.heroPattern} />
           {brandBlock}
           <Text style={[styles.heroFooter, { paddingBottom: insets.bottom + 20 }]}>
-            Culina POS
+            Crafted with ❤️ by https://faraimunashe.live
           </Text>
         </LinearGradient>
 
@@ -324,15 +326,19 @@ const styles = StyleSheet.create({
     maxWidth: 420,
   },
   mark: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
+    width: 76,
+    height: 76,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 22,
+  },
+  brandLogo: {
+    width: 76,
+    height: 76,
+  },
+  brandLogoSplit: {
+    width: 88,
+    height: 88,
   },
   brandName: {
     color: colors.onPrimary,

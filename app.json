@@ -4,7 +4,7 @@
     "slug": "culina-pos",
     "version": "1.0.0",
     "orientation": "default",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/mylogo.png",
     "scheme": "culinapos",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
@@ -20,6 +20,13 @@
       "expo-document-picker",
       "expo-dev-client",
       [
+        "expo-notifications",
+        {
+          "color": "#C1121F",
+          "defaultChannel": "low-stock-alerts"
+        }
+      ],
+      [
         "react-native-thermal-printer-driver",
         {
           "bluetoothAlwaysPermission": "Culina POS connects to your Bluetooth receipt printer."
@@ -28,10 +35,8 @@
     ],
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#1B4332",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#39451F",
+        "foregroundImage": "./assets/mylogo-no-bg.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.culinapos.app",
@@ -44,11 +49,17 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png",
+      "favicon": "./assets/mylogo.png",
       "bundler": "metro"
     },
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b0cf1a11-fb8d-46b6-88bb-de3d6bbfab59"
+      }
     }
   }
 }

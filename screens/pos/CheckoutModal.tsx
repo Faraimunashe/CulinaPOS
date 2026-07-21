@@ -119,6 +119,10 @@ export function CheckoutModal({
       });
       if (cancelledRef.current) return;
 
+      void import('@/services/notificationService')
+        .then(({ notifyLowStockForOrder }) => notifyLowStockForOrder(completed.id))
+        .catch(() => false);
+
       const printResult = await printService.printOrderReceipts(completed);
       if (printResult.status === 'printed') {
         setPrintNote('Customer and kitchen receipts printed.');

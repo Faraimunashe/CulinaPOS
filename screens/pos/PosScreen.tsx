@@ -28,6 +28,7 @@ import * as paymentMethodService from '@/services/paymentMethodService';
 import { useCartStore } from '@/stores/cartStore';
 import { colors } from '@/theme';
 import type {
+  CartLine,
   Category,
   Currency,
   Order,
@@ -69,6 +70,7 @@ export function PosScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [snack, setSnack] = useState<string | null>(null);
+  const [snackIsError, setSnackIsError] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
@@ -161,8 +163,36 @@ export function PosScreen() {
   const columns = useSplitPosLayout ? 3 : width >= 700 ? 3 : 2;
   const count = itemCount();
 
+  const showInsufficientStock = (
+    item: Pick<
+      CartLine,
+      'product_name' | 'limiting_stock_name' | 'max_quantity'
+    >
+  ) => {
+    const stockName = item.limiting_stock_name ?? item.product_name;
+    const availability =
+      item.max_quantity <= 0
+        ? 'out of stock'
+        : `only ${item.max_quantity} unit${
+            item.max_quantity === 1 ? '' : 's'
+          } of ${item.product_name} available`;
+    setSnackIsError(true);
+    setSnack(`Insufficient ${stockName}: ${availability}.`);
+  };
+
   const handleAdd = (product: PosProduct) => {
-    if (!product.in_stock) return;
+    const inCartQty =
+      useCartStore
+        .getState()
+        .lines.find((line) => line.product_id === product.id)?.quantity ?? 0;
+    if (!product.in_stock || inCartQty >= product.max_quantity) {
+      showInsufficientStock({
+        product_name: product.name,
+        limiting_stock_name: product.limiting_stock_name,
+        max_quantity: product.max_quantity,
+      });
+      return;
+    }
     const price = unitPriceForCurrency(product, currencyId);
     addProduct(product, price);
   };
@@ -170,6 +200,7 @@ export function PosScreen() {
   const handleCheckout = () => {
     if (!lines.length) return;
     if (currencyId == null || paymentMethodId == null) {
+      setSnackIsError(true);
       setSnack('Select currency and payment method');
       return;
     }
@@ -177,6 +208,7 @@ export function PosScreen() {
   };
 
   const handleCompleted = (order: Order) => {
+    setSnackIsError(false);
     setSnack(`Order #${order.order_number} completed`);
     setCartOpen(false);
     void refreshProducts();
@@ -366,7 +398,12 @@ export function PosScreen() {
         onCompleted={handleCompleted}
       />
 
-      <Snackbar visible={!!snack} onDismiss={() => setSnack(null)} duration={2800}>
+      <Snackbar
+        visible={!!snack}
+        onDismiss={() => setSnack(null)}
+        duration={3500}
+        style={snackIsError ? styles.errorSnackbar : undefined}
+      >
         {snack}
       </Snackbar>
     </View>
@@ -496,6 +533,9 @@ const styles = StyleSheet.create({
   },
   error: {
     marginHorizontal: 16,
+  },
+  errorSnackbar: {
+    backgroundColor: colors.error,
   },
   mobileCart: {
     flex: 1,

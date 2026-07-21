@@ -1,5 +1,6 @@
 import { Platform, TurboModuleRegistry } from 'react-native';
 import type { Device } from 'react-native-thermal-printer-driver';
+import { ensureBluetoothPermissions } from '@/services/bluetoothPermissions';
 import { formatMoney } from '@/utils/formatMoney';
 import * as printerSettingsService from '@/services/printerSettingsService';
 import * as settingsService from '@/services/settingsService';
@@ -45,6 +46,7 @@ export async function scanPrinters(): Promise<{
   paired: PrinterDevice[];
   found: PrinterDevice[];
 }> {
+  await ensureBluetoothPermissions();
   const { default: ThermalPrinter } = await getDriver();
   return ThermalPrinter.scan();
 }
@@ -61,6 +63,7 @@ export async function stopPrinterScan(): Promise<void> {
 export async function connectPrinter(
   device: Pick<Device, 'name' | 'address' | 'deviceType'>
 ): Promise<string> {
+  await ensureBluetoothPermissions();
   const { default: ThermalPrinter } = await getDriver();
   const address = toTransportAddress(device);
   await ThermalPrinter.connect(address, { timeout: 12000 });

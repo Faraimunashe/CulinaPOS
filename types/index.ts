@@ -187,6 +187,7 @@ export interface CartLine {
   product_id: number;
   product_name: string;
   tracking_type: TrackingType;
+  limiting_stock_name: string | null;
   quantity: number;
   unit_price: number;
   max_quantity: number;
@@ -251,6 +252,7 @@ export interface CheckoutInput {
 export interface PosProduct extends Product {
   in_stock: boolean;
   max_quantity: number;
+  limiting_stock_name: string | null;
 }
 
 export * from './user';

@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -52,6 +52,13 @@ export function AppHeader({ showBack = false, onBack }: AppHeaderProps) {
             color={colors.primary}
           />
         </Pressable>
+
+        <Image
+          source={require('../assets/mylogo-no-bg.png')}
+          style={styles.logo}
+          resizeMode="contain"
+          accessibilityLabel="Culina POS logo"
+        />
 
         <View style={styles.brand}>
           <Text style={styles.title} numberOfLines={1}>
@@ -149,6 +156,11 @@ const styles = StyleSheet.create({
   },
   iconBtnPressed: {
     opacity: 0.85,
+  },
+  logo: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
   },
   brand: {
     flex: 1,

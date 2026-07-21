@@ -21,30 +21,73 @@ export function localOrderDate(date = new Date()): string {
   return `${y}-${m}-${d}`;
 }
 
+interface StockAvailability {
+  maxQuantity: number;
+  limitingStockName: string | null;
+}
+
+/** How many units can be sold and which stock item is the limiting factor. */
+export async function getStockAvailability(
+  product: Pick<
+    Product,
+    | 'id'
+    | 'tracking_type'
+    | 'inventory_item_id'
+    | 'inventory_item_name'
+    | 'inventory_quantity'
+  >
+): Promise<StockAvailability> {
+  if (product.tracking_type === 'DIRECT') {
+    if (product.inventory_item_id == null) {
+      return { maxQuantity: 0, limitingStockName: product.inventory_item_name ?? null };
+    }
+    const qty = product.inventory_quantity ?? 0;
+    return {
+      maxQuantity: Math.max(0, Math.floor(qty)),
+      limitingStockName: product.inventory_item_name ?? null,
+    };
+  }
+
+  const recipe = await getRecipeForProduct(product.id);
+  if (!recipe || recipe.items.length === 0) {
+    return { maxQuantity: 0, limitingStockName: null };
+  }
+
+  let max = Number.POSITIVE_INFINITY;
+  let limitingStockName: string | null = null;
+  for (const item of recipe.items) {
+    const onHand = item.inventory_quantity ?? 0;
+    const perUnit = item.quantity;
+    if (perUnit <= 0) {
+      return {
+        maxQuantity: 0,
+        limitingStockName: item.inventory_name ?? null,
+      };
+    }
+    const itemMax = Math.floor(onHand / perUnit);
+    if (itemMax < max) {
+      max = itemMax;
+      limitingStockName = item.inventory_name ?? null;
+    }
+  }
+  return {
+    maxQuantity: Number.isFinite(max) ? Math.max(0, max) : 0,
+    limitingStockName,
+  };
+}
+
 /** How many units of this product can be sold with current stock. */
 export async function getMaxSellableQuantity(
   product: Pick<
     Product,
-    'id' | 'tracking_type' | 'inventory_item_id' | 'inventory_quantity'
+    | 'id'
+    | 'tracking_type'
+    | 'inventory_item_id'
+    | 'inventory_item_name'
+    | 'inventory_quantity'
   >
 ): Promise<number> {
-  if (product.tracking_type === 'DIRECT') {
-    if (product.inventory_item_id == null) return 0;
-    const qty = product.inventory_quantity ?? 0;
-    return Math.max(0, Math.floor(qty));
-  }
-
-  const recipe = await getRecipeForProduct(product.id);
-  if (!recipe || recipe.items.length === 0) return 0;
-
-  let max = Number.POSITIVE_INFINITY;
-  for (const item of recipe.items) {
-    const onHand = item.inventory_quantity ?? 0;
-    const perUnit = item.quantity;
-    if (perUnit <= 0) return 0;
-    max = Math.min(max, Math.floor(onHand / perUnit));
-  }
-  return Number.isFinite(max) ? Math.max(0, max) : 0;
+  return (await getStockAvailability(product)).maxQuantity;
 }
 
 export async function listPosProducts(options?: {
@@ -59,10 +102,12 @@ export async function listPosProducts(options?: {
 
   return Promise.all(
     products.map(async (product) => {
-      const max_quantity = await getMaxSellableQuantity(product);
+      const availability = await getStockAvailability(product);
+      const max_quantity = availability.maxQuantity;
       return {
         ...product,
         max_quantity,
+        limiting_stock_name: availability.limitingStockName,
         in_stock: max_quantity > 0,
       };
     })
