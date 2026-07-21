@@ -249,7 +249,12 @@ async function buildCustomerNodes(order: Order, paperWidth: 58 | 80) {
   }
   nodes.push(feed(1));
   nodes.push(text('Thank you', { align: 'center', bold: true }));
-  nodes.push(text('Crafted with love by Fariwe', { align: 'center', size: 1 }));
+  nodes.push(
+    text('Made with \u2665 by https://faraimunashe.live', {
+      align: 'center',
+      size: 1,
+    })
+  );
   nodes.push(feed(2));
   nodes.push(cut());
 
