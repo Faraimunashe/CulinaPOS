@@ -1,13 +1,20 @@
 import { Redirect, Stack, useRouter } from 'expo-router';
+import type { Href } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
 import { AppDrawer } from '@/components/AppDrawer';
 import { AppHeader } from '@/components/AppHeader';
 import { useAuthStore } from '@/stores/authStore';
+import { useLicenseStore } from '@/stores/licenseStore';
 import { colors } from '@/theme';
 
 export default function AppLayout() {
+  const isActivated = useLicenseStore((s) => s.isActivated);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const router = useRouter();
+
+  if (!isActivated) {
+    return <Redirect href={'/activate' as Href} />;
+  }
 
   if (!isAuthenticated) {
     return <Redirect href="/login" />;

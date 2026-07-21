@@ -19,17 +19,33 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import type { Href } from 'expo-router';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
 import { useAuthStore } from '@/stores/authStore';
+import { useLicenseStore } from '@/stores/licenseStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import * as backupService from '@/services/backupService';
 import * as settingsService from '@/services/settingsService';
 import { colors } from '@/theme';
 import type { PaymentMethod } from '@/types';
 
+function formatActivatedAt(iso: string | null): string {
+  if (!iso) return 'Licensed';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'Licensed';
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export function SettingsScreen() {
   const isAdmin = useRequireAdmin();
   const router = useRouter();
   const actorId = useAuthStore((s) => s.user?.id);
   const setRestaurantName = useSettingsStore((s) => s.setRestaurantName);
+  const licenseActivated = useLicenseStore((s) => s.isActivated);
+  const licenseActivatedAt = useLicenseStore((s) => s.activatedAt);
 
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
@@ -168,6 +184,43 @@ export function SettingsScreen() {
         <Text style={styles.subtitle}>
           Restaurant details, payments, and database backups.
         </Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardHeading}>License</Text>
+        <View style={styles.licenseRow}>
+          <View
+            style={[
+              styles.licenseBadge,
+              licenseActivated ? styles.licenseOn : styles.licenseOff,
+            ]}
+          >
+            <MaterialCommunityIcons
+              name={licenseActivated ? 'shield-check' : 'shield-alert'}
+              size={18}
+              color={licenseActivated ? colors.success : colors.error}
+            />
+            <Text
+              style={[
+                styles.licenseBadgeText,
+                {
+                  color: licenseActivated ? colors.success : colors.error,
+                },
+              ]}
+            >
+              {licenseActivated ? 'Licensed' : 'Not activated'}
+            </Text>
+          </View>
+        </View>
+        {licenseActivated ? (
+          <Text style={styles.hint}>
+            Activated {formatActivatedAt(licenseActivatedAt)}
+          </Text>
+        ) : (
+          <Text style={styles.hint}>
+            This installation has not been unlocked with a production key.
+          </Text>
+        )}
       </View>
 
       <View style={styles.card}>
@@ -389,6 +442,29 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 15,
     marginBottom: 12,
+  },
+  licenseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  licenseBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  licenseOn: {
+    backgroundColor: colors.primaryContainer,
+  },
+  licenseOff: {
+    backgroundColor: '#FCE8EC',
+  },
+  licenseBadgeText: {
+    fontWeight: '800',
+    fontSize: 13,
   },
   hint: {
     color: colors.onSurface,
