@@ -10,6 +10,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as orderService from '@/services/orderService';
 import * as printService from '@/services/printService';
+import { askPrintRestaurantCopy } from '@/services/receiptPrintFlow';
 import { useAuthStore } from '@/stores/authStore';
 import { useCartStore } from '@/stores/cartStore';
 import { usePrinterStore } from '@/stores/printerStore';
@@ -123,18 +124,18 @@ export function CheckoutModal({
         .then(({ notifyLowStockForOrder }) => notifyLowStockForOrder(completed.id))
         .catch(() => false);
 
-      const printResult = await printService.printOrderReceipts(completed);
-      if (printResult.status === 'printed') {
-        setPrintNote('Customer and kitchen receipts printed.');
-      } else if (printResult.status === 'skipped') {
+      const customerPrint = await printService.printCustomerReceipt(completed);
+      if (customerPrint.status === 'printed') {
+        setPrintNote('Customer receipt printed');
+      } else if (customerPrint.status === 'skipped') {
         setPrintNote(
           printerConnected
-            ? printResult.reason ?? 'Receipts not printed.'
+            ? customerPrint.reason ?? 'Receipts not printed.'
             : 'Sale saved · printer offline, no receipts printed.'
         );
       } else {
         setPrintNote(
-          `Sale saved · print issue: ${printResult.reason ?? 'unknown'}`
+          `Sale saved · print issue: ${customerPrint.reason ?? 'unknown'}`
         );
       }
 
@@ -142,6 +143,24 @@ export function CheckoutModal({
       clearCart();
       setPhase('done');
       onCompleted(completed);
+
+      if (customerPrint.status === 'printed') {
+        const wantsRestaurant = await askPrintRestaurantCopy();
+        if (wantsRestaurant) {
+          const kitchen = await printService.printRestaurantCopy(completed, {
+            force: true,
+          });
+          if (kitchen.status === 'printed') {
+            setPrintNote('Customer and restaurant receipts printed');
+          } else {
+            setPrintNote(
+              `Customer printed · restaurant copy failed: ${
+                kitchen.reason ?? 'unknown'
+              }`
+            );
+          }
+        }
+      }
     } catch (err) {
       if (cancelledRef.current) return;
       setPhase('error');

@@ -368,7 +368,10 @@ export function PosScreen() {
           <View
             style={[
               styles.mobileCart,
-              { paddingTop: Math.max(insets.top, 8) },
+              {
+                paddingTop: Math.max(insets.top, 8),
+                paddingBottom: Math.max(insets.bottom, 0),
+              },
             ]}
           >
             <View style={styles.mobileCartHeader}>

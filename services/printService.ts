@@ -146,13 +146,43 @@ export async function restorePrinterConnection(): Promise<{
   }
 }
 
-function padLine(left: string, right: string, width: number): string {
-  const gap = Math.max(1, width - left.length - right.length);
-  return `${left}${' '.repeat(gap)}${right}`;
+/** Chars per line for Font A — 1 under nominal so picky printers never wrap. */
+function charsPerLine(paperWidth: 58 | 80): number {
+  return paperWidth >= 80 ? 47 : 31;
+}
+
+/**
+ * Thermal printers often mishandle UTF-8 (emoji, fancy dashes, hearts).
+ * Keep printable ASCII so lines stay short and readable.
+ */
+function toPrintableAscii(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function clip(value: string, max: number): string {
+  const s = toPrintableAscii(value);
+  if (s.length <= max) return s;
+  if (max <= 1) return s.slice(0, max);
+  return `${s.slice(0, max - 1)}.`;
 }
 
 function money(amount: number, symbol: string): string {
-  return formatMoney(amount, symbol);
+  const safeSymbol = toPrintableAscii(symbol) || '$';
+  return formatMoney(amount, safeSymbol);
+}
+
+/** Keep amounts short enough for the Amt column. */
+function moneyCompact(amount: number, symbol: string, maxWidth: number): string {
+  let value = money(amount, symbol);
+  if (value.length > maxWidth) {
+    value = amount.toFixed(2);
+  }
+  return clip(value, maxWidth);
 }
 
 function formatOrderWhen(order: Order): { date: string; time: string } {
@@ -160,30 +190,67 @@ function formatOrderWhen(order: Order): { date: string; time: string } {
   if (Number.isNaN(created.getTime())) {
     return { date: order.order_date, time: '' };
   }
-  return {
-    date: created.toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    }),
-    time: created.toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-    }),
-  };
+  const y = created.getFullYear();
+  const m = String(created.getMonth() + 1).padStart(2, '0');
+  const d = String(created.getDate()).padStart(2, '0');
+  const hh = String(created.getHours()).padStart(2, '0');
+  const mm = String(created.getMinutes()).padStart(2, '0');
+  return { date: `${y}-${m}-${d}`, time: `${hh}:${mm}` };
+}
+
+function dashedRule(width: number): string {
+  return '-'.repeat(width);
+}
+
+function padLine(left: string, right: string, width: number): string {
+  const r = clip(right, Math.max(1, width - 2));
+  const maxLeft = Math.max(1, width - r.length - 1);
+  const l = clip(left, maxLeft);
+  const gap = Math.max(1, width - l.length - r.length);
+  const line = `${l}${' '.repeat(gap)}${r}`;
+  return line.length > width ? line.slice(0, width) : line;
+}
+
+/**
+ * Fixed 3-column row that is ALWAYS exactly `width` characters.
+ * Item left · Qty right · Amt right — stays on one line.
+ */
+function itemRow(name: string, qty: string, amt: string, width: number): string {
+  const qtyW = 4;
+  const amtW = 9;
+  const gaps = 2;
+  const nameW = Math.max(8, width - qtyW - amtW - gaps);
+  const n = clip(name, nameW).padEnd(nameW, ' ');
+  const q = clip(qty, qtyW).padStart(qtyW, ' ');
+  const a = clip(amt, amtW).padStart(amtW, ' ');
+  return `${n} ${q} ${a}`.slice(0, width);
+}
+
+function itemHeader(width: number): string {
+  return itemRow('Item', 'Qty', 'Amt', width);
+}
+
+function kitchenRow(name: string, qty: string, width: number): string {
+  const qtyW = 4;
+  const nameW = Math.max(8, width - qtyW - 1);
+  const n = clip(name, nameW).padEnd(nameW, ' ');
+  const q = clip(qty, qtyW).padStart(qtyW, ' ');
+  return `${n} ${q}`.slice(0, width);
 }
 
 async function buildCustomerNodes(order: Order, paperWidth: 58 | 80) {
   const mod = await getDriver();
-  const { text, line, feed, cut, columns } = mod;
+  const { text, feed, cut } = mod;
   const restaurant = await settingsService.getRestaurantSettings();
   const symbol = order.currency_symbol ?? '$';
   const items = order.items ?? [];
   const { date, time } = formatOrderWhen(order);
-  const cols = paperWidth === 58 ? { name: 18, qty: 4, price: 10 } : { name: 28, qty: 6, price: 14 };
+  const width = charsPerLine(paperWidth);
+  // Double-width text fits roughly half as many characters
+  const wideWidth = Math.floor(width / 2);
 
   const nodes = [
-    text(restaurant.restaurantName || 'Culina POS', {
+    text(clip(restaurant.restaurantName || 'Culina POS', wideWidth), {
       align: 'center',
       bold: true,
       size: 2,
@@ -192,70 +259,59 @@ async function buildCustomerNodes(order: Order, paperWidth: 58 | 80) {
 
   if (restaurant.restaurantAddress) {
     nodes.push(
-      text(restaurant.restaurantAddress, { align: 'center', size: 1 })
+      text(clip(restaurant.restaurantAddress, width), {
+        align: 'center',
+      })
     );
   }
   if (restaurant.restaurantPhone) {
-    nodes.push(text(restaurant.restaurantPhone, { align: 'center', size: 1 }));
-  }
-
-  nodes.push(line({ style: 'dashed' }));
-  nodes.push(text(`Order #${order.order_number}`, { bold: true }));
-  nodes.push(text(`${date}${time ? `  ${time}` : ''}`));
-  if (order.cashier_name) {
-    nodes.push(text(`Cashier: ${order.cashier_name}`));
-  }
-  nodes.push(line({ style: 'dashed' }));
-
-  nodes.push(
-    columns([
-      { content: 'Item', width: cols.name, align: 'left' },
-      { content: 'Qty', width: cols.qty, align: 'right' },
-      { content: 'Amt', width: cols.price, align: 'right' },
-    ])
-  );
-
-  for (const item of items) {
     nodes.push(
-      columns([
-        {
-          content: truncate(item.product_name, cols.name),
-          width: cols.name,
-          align: 'left',
-        },
-        {
-          content: String(item.quantity),
-          width: cols.qty,
-          align: 'right',
-        },
-        {
-          content: money(item.line_total, symbol),
-          width: cols.price,
-          align: 'right',
-        },
-      ])
+      text(clip(restaurant.restaurantPhone, width), {
+        align: 'center',
+      })
     );
   }
 
-  nodes.push(line({ style: 'dashed' }));
+  nodes.push(text(dashedRule(width)));
+  nodes.push(text(`Order #${order.order_number}`, { bold: true }));
+  nodes.push(text(`${date}${time ? ` ${time}` : ''}`));
+  if (order.cashier_name) {
+    nodes.push(text(clip(`Cashier: ${order.cashier_name}`, width)));
+  }
+  nodes.push(text(dashedRule(width)));
+  // Same fixed columns as every item row (avoid bold — can shift spacing)
+  nodes.push(text(itemHeader(width)));
+  nodes.push(text(dashedRule(width)));
+
+  if (items.length === 0) {
+    nodes.push(text('(no items)'));
+  } else {
+    for (const item of items) {
+      const name = toPrintableAscii(item.product_name) || 'Item';
+      const qty = String(item.quantity);
+      const amt = moneyCompact(item.line_total, symbol, 9);
+      nodes.push(text(itemRow(name, qty, amt, width)));
+    }
+  }
+
+  nodes.push(text(dashedRule(width)));
   nodes.push(
-    text(padLine('TOTAL', money(order.total, symbol), paperWidth === 58 ? 32 : 48), {
-      bold: true,
-      size: 2,
-    })
+    text(
+      padLine('TOTAL', moneyCompact(order.total, symbol, wideWidth - 6), wideWidth),
+      {
+        bold: true,
+        size: 2,
+      }
+    )
   );
   if (order.payment_method_name) {
-    nodes.push(text(`Payment: ${order.payment_method_name}`));
+    nodes.push(text(clip(`Payment: ${order.payment_method_name}`, width)));
   }
-  nodes.push(feed(1));
+  nodes.push(text(' '));
   nodes.push(text('Thank you', { align: 'center', bold: true }));
-  nodes.push(
-    text('Made with \u2665 by https://faraimunashe.live', {
-      align: 'center',
-      size: 1,
-    })
-  );
-  nodes.push(feed(2));
+  nodes.push(text('Made with love by', { align: 'center' }));
+  nodes.push(text('https://faraimunashe.live', { align: 'center' }));
+  nodes.push(feed(1));
   nodes.push(cut());
 
   return nodes as never[];
@@ -263,63 +319,79 @@ async function buildCustomerNodes(order: Order, paperWidth: 58 | 80) {
 
 async function buildKitchenNodes(order: Order, paperWidth: 58 | 80) {
   const mod = await getDriver();
-  const { text, line, feed, cut, columns } = mod;
-  const items = order.items ?? [];
+  const { text, feed, cut } = mod;
+  const items = (order.items ?? []) as OrderItem[];
   const { date, time } = formatOrderWhen(order);
-  const cols = paperWidth === 58 ? { name: 24, qty: 8 } : { name: 38, qty: 10 };
+  const width = charsPerLine(paperWidth);
+  const wideWidth = Math.floor(width / 2);
 
   const nodes = [
     text('RESTAURANT COPY', { align: 'center', bold: true, size: 2 }),
-    text(`Order #${order.order_number}`, { align: 'center', bold: true, size: 2 }),
-    line({ style: 'dashed' }),
-    text(`${date}${time ? `  ${time}` : ''}`),
+    text(clip(`Order #${order.order_number}`, wideWidth), {
+      align: 'center',
+      bold: true,
+      size: 2,
+    }),
+    text(dashedRule(width)),
+    text(`${date}${time ? ` ${time}` : ''}`),
   ];
   if (order.cashier_name) {
-    nodes.push(text(`Cashier: ${order.cashier_name}`));
+    nodes.push(text(clip(`Cashier: ${order.cashier_name}`, width)));
   }
-  nodes.push(line({ style: 'dashed' }));
-  nodes.push(
-    columns([
-      { content: 'Item', width: cols.name, align: 'left' },
-      { content: 'Qty', width: cols.qty, align: 'right' },
-    ])
-  );
+  nodes.push(text(dashedRule(width)));
+  nodes.push(text(kitchenRow('Item', 'Qty', width)));
+  nodes.push(text(dashedRule(width)));
 
-  for (const item of items as OrderItem[]) {
-    nodes.push(
-      columns([
-        {
-          content: truncate(item.product_name, cols.name),
-          width: cols.name,
-          align: 'left',
-        },
-        {
-          content: String(item.quantity),
-          width: cols.qty,
-          align: 'right',
-        },
-      ])
-    );
+  if (items.length === 0) {
+    nodes.push(text('(no items)'));
+  } else {
+    for (const item of items) {
+      const name = toPrintableAscii(item.product_name) || 'Item';
+      nodes.push(text(kitchenRow(name, String(item.quantity), width)));
+    }
   }
 
-  nodes.push(line({ style: 'dashed' }));
-  nodes.push(feed(2));
+  nodes.push(text(dashedRule(width)));
+  nodes.push(feed(1));
   nodes.push(cut());
   return nodes as never[];
 }
 
-function truncate(value: string, max: number): string {
-  const trimmed = value.trim();
-  if (trimmed.length <= max) return trimmed;
-  return `${trimmed.slice(0, Math.max(1, max - 1))}…`;
+type PrintCopy = 'customer' | 'restaurant';
+
+async function resolveOrderForPrint(order: Order): Promise<Order> {
+  const { getOrderById } = await import('@/services/orderService');
+  const fullOrder = (await getOrderById(order.id)) ?? order;
+  if (!fullOrder.items?.length && order.items?.length) {
+    fullOrder.items = order.items;
+  }
+  return fullOrder;
 }
 
 /**
- * Prints customer + restaurant receipts when a printer is connected.
- * Never throws — sale flow must continue if printing fails or is offline.
+ * Prefer an existing link; if the driver's connection probe fails, reconnect.
+ * Many ESC/POS stacks report "not connected" after idle even though print still works
+ * after a quick reconnect.
  */
-export async function printOrderReceipts(
+async function ensurePrinterSession(address: string): Promise<void> {
+  await ensureBluetoothPermissions();
+  const { default: ThermalPrinter } = await getDriver();
+
+  let linked = false;
+  try {
+    linked = await ThermalPrinter.isConnected(address);
+  } catch {
+    linked = false;
+  }
+
+  if (linked) return;
+
+  await ThermalPrinter.connect(address, { timeout: 12000 });
+}
+
+async function printCopy(
   order: Order,
+  copy: PrintCopy,
   options?: { force?: boolean }
 ): Promise<PrintJobResult> {
   try {
@@ -336,9 +408,17 @@ export async function printOrderReceipts(
 
     const { default: ThermalPrinter } = await getDriver();
     const address = settings.device_address;
-    const connected = await ThermalPrinter.isConnected(address);
-    if (!connected) {
-      return { status: 'skipped', reason: 'Printer not connected' };
+
+    try {
+      await ensurePrinterSession(address);
+    } catch (err) {
+      return {
+        status: 'skipped',
+        reason:
+          err instanceof Error
+            ? `Printer not connected: ${err.message}`
+            : 'Printer not connected',
+      };
     }
 
     const paperWidth = settings.paper_width === 58 ? 58 : 80;
@@ -346,24 +426,42 @@ export async function printOrderReceipts(
       paperWidthMm: paperWidth as 58 | 80,
       keepAlive: true,
       timeout: 20000,
+      codePage: 'cp437' as const,
     };
 
-    const customer = await buildCustomerNodes(order, paperWidth);
-    const kitchen = await buildKitchenNodes(order, paperWidth);
+    const fullOrder = await resolveOrderForPrint(order);
+    const nodes =
+      copy === 'customer'
+        ? await buildCustomerNodes(fullOrder, paperWidth)
+        : await buildKitchenNodes(fullOrder, paperWidth);
 
-    const customerResult = await ThermalPrinter.print(address, customer, printOpts);
-    if (!customerResult.success) {
-      return {
-        status: 'failed',
-        reason: customerResult.error?.message ?? 'Customer receipt failed',
-      };
+    const send = async () =>
+      ThermalPrinter.print(address, nodes, printOpts);
+
+    let result = await send();
+    if (!result.success) {
+      // One reconnect + retry — covers drop after customer copy / idle timeout
+      try {
+        await ThermalPrinter.connect(address, { timeout: 12000 });
+        result = await send();
+      } catch (err) {
+        return {
+          status: 'failed',
+          reason:
+            result.error?.message ??
+            (err instanceof Error ? err.message : 'Print failed'),
+        };
+      }
     }
 
-    const kitchenResult = await ThermalPrinter.print(address, kitchen, printOpts);
-    if (!kitchenResult.success) {
+    if (!result.success) {
       return {
         status: 'failed',
-        reason: kitchenResult.error?.message ?? 'Kitchen receipt failed',
+        reason:
+          result.error?.message ??
+          (copy === 'customer'
+            ? 'Customer receipt failed'
+            : 'Restaurant copy failed'),
       };
     }
 
@@ -374,4 +472,31 @@ export async function printOrderReceipts(
       reason: err instanceof Error ? err.message : 'Print failed',
     };
   }
+}
+
+/** Prints the customer receipt only. */
+export async function printCustomerReceipt(
+  order: Order,
+  options?: { force?: boolean }
+): Promise<PrintJobResult> {
+  return printCopy(order, 'customer', options);
+}
+
+/** Prints the restaurant (kitchen) copy only. */
+export async function printRestaurantCopy(
+  order: Order,
+  options?: { force?: boolean }
+): Promise<PrintJobResult> {
+  return printCopy(order, 'restaurant', options);
+}
+
+/**
+ * Prints the customer receipt. Restaurant copy is handled by the UI prompt.
+ * Kept for callers that only need the customer path.
+ */
+export async function printOrderReceipts(
+  order: Order,
+  options?: { force?: boolean }
+): Promise<PrintJobResult> {
+  return printCustomerReceipt(order, options);
 }

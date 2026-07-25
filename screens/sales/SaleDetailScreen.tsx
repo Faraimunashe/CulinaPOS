@@ -83,8 +83,8 @@ export function SaleDetailScreen() {
     if (!order) return;
     setReprinting(true);
     try {
-      await orderService.reprintOrder(order.id);
-      setSnack('Receipts sent to printer');
+      const message = await orderService.reprintOrder(order.id);
+      setSnack(message);
     } catch (err) {
       setSnack(err instanceof Error ? err.message : 'Could not reprint');
     } finally {

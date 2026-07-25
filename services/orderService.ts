@@ -555,24 +555,27 @@ export async function reverseOrder(
   return order;
 }
 
-export async function reprintOrder(orderId: number): Promise<void> {
+export async function reprintOrder(orderId: number): Promise<string> {
   const order = await getOrderById(orderId);
   if (!order) throw new Error('Sale not found');
 
-  const { printOrderReceipts } = await import('@/services/printService');
+  const { printReceiptsWithPrompt } = await import('@/services/receiptPrintFlow');
   const { usePrinterStore } = await import('@/stores/printerStore');
 
-  if (!usePrinterStore.getState().isConnected) {
-    throw new Error('Printer not connected. Open Printer settings to connect.');
+  // Soft check only — print path reconnects if needed
+  const printer = usePrinterStore.getState();
+  if (!printer.deviceAddress && !printer.isConnected) {
+    throw new Error('No printer configured. Open Printer settings to connect.');
   }
 
-  const result = await printOrderReceipts(order, { force: true });
-  if (result.status === 'skipped') {
-    throw new Error(result.reason ?? 'Printing skipped');
+  const summary = await printReceiptsWithPrompt(order, { force: true });
+  if (summary.customer.status === 'skipped') {
+    throw new Error(summary.customer.reason ?? 'Printing skipped');
   }
-  if (result.status === 'failed') {
-    throw new Error(result.reason ?? 'Print failed');
+  if (summary.customer.status === 'failed') {
+    throw new Error(summary.customer.reason ?? 'Print failed');
   }
+  return summary.message;
 }
 
 export async function priceForCurrency(

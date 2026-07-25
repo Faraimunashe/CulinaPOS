@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Snackbar, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCartStore } from '@/stores/cartStore';
+import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { formatMoney } from '@/utils/formatMoney';
 import { colors } from '@/theme';
 import type { Currency, PaymentMethod } from '@/types';
@@ -22,6 +24,8 @@ export function PosCartPanel({
   onCheckout,
   compact = false,
 }: PosCartPanelProps) {
+  const insets = useSafeAreaInsets();
+  const { isTablet } = useResponsiveLayout();
   const [stockWarning, setStockWarning] = useState<string | null>(null);
   const lines = useCartStore((s) => s.lines);
   const currencyId = useCartStore((s) => s.currencyId);
@@ -39,6 +43,12 @@ export function PosCartPanel({
   const count = itemCount();
   const canCheckout =
     lines.length > 0 && currencyId != null && paymentMethodId != null;
+
+  // System nav / tablet taskbars often overlay the bottom edge.
+  // Use safe-area inset, with an Android tablet floor so Process order stays clear.
+  const taskbarCushion =
+    Platform.OS === 'android' && isTablet ? 28 : Platform.OS === 'android' ? 12 : 0;
+  const footerBottomPad = Math.max(insets.bottom, 12) + 16 + taskbarCushion;
 
   return (
     <View style={[styles.root, compact && styles.rootCompact]}>
@@ -154,7 +164,7 @@ export function PosCartPanel({
         )}
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: footerBottomPad }]}>
         <Text style={styles.sectionLabel}>Currency</Text>
         <View style={styles.chipRow}>
           {currencies.map((currency) => {
@@ -350,7 +360,6 @@ const styles = StyleSheet.create({
     borderTopColor: colors.outline,
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 16,
   },
   sectionLabel: {
     fontSize: 11,
