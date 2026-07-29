@@ -36,6 +36,42 @@ export interface PaymentSalesRow {
   total: number;
 }
 
+export interface CurrencyTotalRow {
+  currency_id: number | null;
+  currency_name: string;
+  currency_symbol: string;
+  order_count: number;
+  total: number;
+}
+
+export interface CashierCurrencyTotalRow {
+  cashier_id: number;
+  cashier_name: string;
+  currency_id: number | null;
+  currency_name: string;
+  currency_symbol: string;
+  order_count: number;
+  total: number;
+}
+
+export interface PaymentCurrencyTotalRow {
+  payment_method_id: number | null;
+  payment_method_name: string;
+  currency_id: number | null;
+  currency_name: string;
+  currency_symbol: string;
+  order_count: number;
+  total: number;
+}
+
+export interface DailyCloseSummary {
+  order_date: string;
+  order_count: number;
+  by_cashier: CashierCurrencyTotalRow[];
+  by_payment: PaymentCurrencyTotalRow[];
+  by_currency: CurrencyTotalRow[];
+}
+
 function monthPrefix(date = new Date()): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -170,6 +206,77 @@ export async function getSalesByPaymentMethod(options?: {
      ORDER BY total DESC`,
     `-${days} days`
   );
+}
+
+/** End-of-day close report for a local order date (defaults to today). */
+export async function getDailyCloseSummary(options?: {
+  orderDate?: string;
+}): Promise<DailyCloseSummary> {
+  const db = await getDatabase();
+  const orderDate = options?.orderDate ?? localOrderDate();
+
+  const orderCountRow = await db.getFirstAsync<{ order_count: number }>(
+    `SELECT COUNT(*) as order_count
+     FROM orders
+     WHERE order_date = ? AND status = 'COMPLETED'`,
+    orderDate
+  );
+
+  const by_cashier = await db.getAllAsync<CashierCurrencyTotalRow>(
+    `SELECT o.cashier_id,
+            COALESCE(u.full_name, 'Unknown') as cashier_name,
+            o.currency_id,
+            COALESCE(c.name, 'Unknown') as currency_name,
+            COALESCE(c.symbol, '$') as currency_symbol,
+            COUNT(*) as order_count,
+            COALESCE(SUM(o.total), 0) as total
+     FROM orders o
+     LEFT JOIN users u ON u.id = o.cashier_id
+     LEFT JOIN currencies c ON c.id = o.currency_id
+     WHERE o.order_date = ? AND o.status = 'COMPLETED'
+     GROUP BY o.cashier_id, u.full_name, o.currency_id, c.name, c.symbol
+     ORDER BY u.full_name COLLATE NOCASE ASC, c.name COLLATE NOCASE ASC`,
+    orderDate
+  );
+
+  const by_payment = await db.getAllAsync<PaymentCurrencyTotalRow>(
+    `SELECT o.payment_method_id,
+            COALESCE(pm.name, 'Unknown') as payment_method_name,
+            o.currency_id,
+            COALESCE(c.name, 'Unknown') as currency_name,
+            COALESCE(c.symbol, '$') as currency_symbol,
+            COUNT(*) as order_count,
+            COALESCE(SUM(o.total), 0) as total
+     FROM orders o
+     LEFT JOIN payment_methods pm ON pm.id = o.payment_method_id
+     LEFT JOIN currencies c ON c.id = o.currency_id
+     WHERE o.order_date = ? AND o.status = 'COMPLETED'
+     GROUP BY o.payment_method_id, pm.name, o.currency_id, c.name, c.symbol
+     ORDER BY pm.name COLLATE NOCASE ASC, c.name COLLATE NOCASE ASC`,
+    orderDate
+  );
+
+  const by_currency = await db.getAllAsync<CurrencyTotalRow>(
+    `SELECT o.currency_id,
+            COALESCE(c.name, 'Unknown') as currency_name,
+            COALESCE(c.symbol, '$') as currency_symbol,
+            COUNT(*) as order_count,
+            COALESCE(SUM(o.total), 0) as total
+     FROM orders o
+     LEFT JOIN currencies c ON c.id = o.currency_id
+     WHERE o.order_date = ? AND o.status = 'COMPLETED'
+     GROUP BY o.currency_id, c.name, c.symbol
+     ORDER BY c.name COLLATE NOCASE ASC`,
+    orderDate
+  );
+
+  return {
+    order_date: orderDate,
+    order_count: orderCountRow?.order_count ?? 0,
+    by_cashier,
+    by_payment,
+    by_currency,
+  };
 }
 
 export async function getInventoryReport(): Promise<InventoryItem[]> {

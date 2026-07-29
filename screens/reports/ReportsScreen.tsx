@@ -6,17 +6,19 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { ActivityIndicator, HelperText, Text } from 'react-native-paper';
+import { ActivityIndicator, HelperText, Snackbar, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
 import * as reportService from '@/services/reportService';
+import * as printService from '@/services/printService';
 import { formatStockLabel } from '@/services/inventoryService';
 import { formatMoney } from '@/utils/formatMoney';
 import { colors } from '@/theme';
 import type { InventoryItem } from '@/types';
 import type {
   CashierSalesRow,
+  CurrencyTotalRow,
   DailySalesRow,
   PaymentSalesRow,
   ProductSalesRow,
@@ -69,6 +71,11 @@ export function ReportsScreen() {
   const [payments, setPayments] = useState<PaymentSalesRow[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [lowStock, setLowStock] = useState<InventoryItem[]>([]);
+  const [todayByCurrency, setTodayByCurrency] = useState<CurrencyTotalRow[]>(
+    []
+  );
+  const [printingDay, setPrintingDay] = useState(false);
+  const [snack, setSnack] = useState<string | null>(null);
 
   const load = useCallback(async (opts?: { soft?: boolean }) => {
     if (opts?.soft) setRefreshing(true);
@@ -83,6 +90,7 @@ export function ReportsScreen() {
         paymentRows,
         inventoryRows,
         lowRows,
+        closeSummary,
       ] = await Promise.all([
         reportService.getTodaySalesSummary(),
         reportService.getMonthlySalesSummary(),
@@ -92,6 +100,7 @@ export function ReportsScreen() {
         reportService.getSalesByPaymentMethod({ days: 30 }),
         reportService.getInventoryReport(),
         reportService.getLowStockReport(),
+        reportService.getDailyCloseSummary(),
       ]);
       setToday(todaySummary);
       setMonth(monthSummary);
@@ -101,6 +110,7 @@ export function ReportsScreen() {
       setPayments(paymentRows);
       setInventory(inventoryRows);
       setLowStock(lowRows);
+      setTodayByCurrency(closeSummary.by_currency);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load reports');
@@ -136,6 +146,22 @@ export function ReportsScreen() {
   const activeTab = TABS.find((t) => t.key === tab) ?? TABS[0];
 
   if (!isAdmin) return null;
+
+  const printTodaySummary = async () => {
+    setPrintingDay(true);
+    try {
+      const result = await printService.printDailySummaryReceipt();
+      if (result.status === 'printed') {
+        setSnack("Today's summary printed");
+      } else {
+        setSnack(result.reason ?? 'Could not print summary');
+      }
+    } catch (err) {
+      setSnack(err instanceof Error ? err.message : 'Print failed');
+    } finally {
+      setPrintingDay(false);
+    }
+  };
 
   return (
     <View style={styles.root}>
@@ -244,15 +270,54 @@ export function ReportsScreen() {
                 </View>
                 <View style={styles.heroStatCopy}>
                   <Text style={styles.heroStatLabel}>Today’s sales</Text>
-                  <Text style={styles.heroStatValue}>
-                    {formatMoney(today?.total ?? 0)}
-                  </Text>
+                  {todayByCurrency.length > 1 ? (
+                    todayByCurrency.map((row) => (
+                      <Text
+                        key={String(row.currency_id ?? row.currency_name)}
+                        style={styles.heroStatValue}
+                      >
+                        {formatMoney(row.total, row.currency_symbol)}
+                      </Text>
+                    ))
+                  ) : (
+                    <Text style={styles.heroStatValue}>
+                      {formatMoney(
+                        todayByCurrency[0]?.total ?? today?.total ?? 0,
+                        todayByCurrency[0]?.currency_symbol
+                      )}
+                    </Text>
+                  )}
                   <Text style={styles.heroStatMeta}>
                     {today?.order_count ?? 0} orders · {today?.item_count ?? 0}{' '}
                     items sold
                   </Text>
                 </View>
               </View>
+
+              <Pressable
+                onPress={() => void printTodaySummary()}
+                disabled={printingDay}
+                style={({ pressed }) => [
+                  styles.printDayBtn,
+                  pressed && styles.printDayBtnPressed,
+                  printingDay && styles.printDayBtnDisabled,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Print today's summary receipt"
+              >
+                {printingDay ? (
+                  <ActivityIndicator color={colors.onPrimary} />
+                ) : (
+                  <MaterialCommunityIcons
+                    name="printer"
+                    size={20}
+                    color={colors.onPrimary}
+                  />
+                )}
+                <Text style={styles.printDayBtnText}>
+                  {printingDay ? 'Printing…' : "Print today's summary"}
+                </Text>
+              </Pressable>
 
               <View style={styles.metricGrid}>
                 <MetricCard
@@ -430,6 +495,14 @@ export function ReportsScreen() {
           {error}
         </HelperText>
       ) : null}
+
+      <Snackbar
+        visible={!!snack}
+        onDismiss={() => setSnack(null)}
+        duration={3200}
+      >
+        {snack}
+      </Snackbar>
     </View>
   );
 }
@@ -750,6 +823,27 @@ const styles = StyleSheet.create({
     color: colors.onPrimary,
     opacity: 0.8,
     fontSize: 13,
+  },
+  printDayBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  printDayBtnPressed: {
+    opacity: 0.9,
+  },
+  printDayBtnDisabled: {
+    opacity: 0.7,
+  },
+  printDayBtnText: {
+    color: colors.onPrimary,
+    fontWeight: '800',
+    fontSize: 15,
   },
   metricGrid: {
     flexDirection: 'row',

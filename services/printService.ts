@@ -500,3 +500,192 @@ export async function printOrderReceipts(
 ): Promise<PrintJobResult> {
   return printCustomerReceipt(order, options);
 }
+
+async function buildDailySummaryNodes(
+  summary: import('@/services/reportService').DailyCloseSummary,
+  paperWidth: 58 | 80
+) {
+  const mod = await getDriver();
+  const { text, feed, cut } = mod;
+  const restaurant = await settingsService.getRestaurantSettings();
+  const width = charsPerLine(paperWidth);
+  const wideWidth = Math.floor(width / 2);
+
+  const nodes = [
+    text(clip(restaurant.restaurantName || 'Culina POS', wideWidth), {
+      align: 'center',
+      bold: true,
+      size: 2,
+    }),
+    text('DAILY SUMMARY', { align: 'center', bold: true, size: 2 }),
+    text(summary.order_date, { align: 'center' }),
+    text(dashedRule(width)),
+    text(`Orders: ${summary.order_count}`, { bold: true }),
+    text(dashedRule(width)),
+  ];
+
+  nodes.push(text('BY CASHIER', { bold: true }));
+  if (summary.by_cashier.length === 0) {
+    nodes.push(text('(none)'));
+  } else {
+    let lastCashier = '';
+    for (const row of summary.by_cashier) {
+      if (row.cashier_name !== lastCashier) {
+        nodes.push(text(clip(row.cashier_name, width), { bold: true }));
+        lastCashier = row.cashier_name;
+      }
+      nodes.push(
+        text(
+          padLine(
+            `  ${row.currency_symbol} x${row.order_count}`,
+            moneyCompact(row.total, row.currency_symbol, 10),
+            width
+          )
+        )
+      );
+    }
+  }
+
+  nodes.push(text(dashedRule(width)));
+  nodes.push(text('BY PAYMENT', { bold: true }));
+  if (summary.by_payment.length === 0) {
+    nodes.push(text('(none)'));
+  } else {
+    let lastPay = '';
+    for (const row of summary.by_payment) {
+      if (row.payment_method_name !== lastPay) {
+        nodes.push(text(clip(row.payment_method_name, width), { bold: true }));
+        lastPay = row.payment_method_name;
+      }
+      nodes.push(
+        text(
+          padLine(
+            `  ${row.currency_symbol} x${row.order_count}`,
+            moneyCompact(row.total, row.currency_symbol, 10),
+            width
+          )
+        )
+      );
+    }
+  }
+
+  nodes.push(text(dashedRule(width)));
+  nodes.push(text('BY CURRENCY', { bold: true }));
+  if (summary.by_currency.length === 0) {
+    nodes.push(text('(none)'));
+  } else {
+    for (const row of summary.by_currency) {
+      nodes.push(
+        text(
+          padLine(
+            `${clip(row.currency_name, 12)} x${row.order_count}`,
+            moneyCompact(row.total, row.currency_symbol, 10),
+            width
+          )
+        )
+      );
+    }
+  }
+
+  nodes.push(text(dashedRule(width)));
+  nodes.push(text('GRAND TOTAL', { bold: true, align: 'center' }));
+  if (summary.by_currency.length === 0) {
+    nodes.push(text('0.00', { align: 'center', bold: true, size: 2 }));
+  } else {
+    for (const row of summary.by_currency) {
+      nodes.push(
+        text(
+          padLine(
+            clip(row.currency_name, wideWidth - 8),
+            moneyCompact(row.total, row.currency_symbol, wideWidth - 6),
+            wideWidth
+          ),
+          { bold: true, size: 2 }
+        )
+      );
+    }
+  }
+  nodes.push(text(`Orders: ${summary.order_count}`, { align: 'center' }));
+  nodes.push(text(dashedRule(width)));
+  nodes.push(text('End of day report', { align: 'center' }));
+  nodes.push(feed(1));
+  nodes.push(cut());
+
+  return nodes as never[];
+}
+
+/** Prints today's (or a given day's) sales summary Z-report. Always attempts print. */
+export async function printDailySummaryReceipt(options?: {
+  orderDate?: string;
+}): Promise<PrintJobResult> {
+  try {
+    if (!isNativeAvailable()) {
+      return { status: 'skipped', reason: 'Printer module unavailable' };
+    }
+
+    const settings = await printerSettingsService.getPrinterSettings();
+    if (!settings.device_address) {
+      return { status: 'skipped', reason: 'No printer configured' };
+    }
+
+    const { getDailyCloseSummary } = await import('@/services/reportService');
+    const summary = await getDailyCloseSummary({
+      orderDate: options?.orderDate,
+    });
+
+    const { default: ThermalPrinter } = await getDriver();
+    const address = settings.device_address;
+
+    try {
+      await ensurePrinterSession(address);
+    } catch (err) {
+      return {
+        status: 'skipped',
+        reason:
+          err instanceof Error
+            ? `Printer not connected: ${err.message}`
+            : 'Printer not connected',
+      };
+    }
+
+    const paperWidth = settings.paper_width === 58 ? 58 : 80;
+    const printOpts = {
+      paperWidthMm: paperWidth as 58 | 80,
+      keepAlive: true,
+      timeout: 20000,
+      codePage: 'cp437' as const,
+    };
+
+    const nodes = await buildDailySummaryNodes(summary, paperWidth);
+    const send = async () => ThermalPrinter.print(address, nodes, printOpts);
+
+    let result = await send();
+    if (!result.success) {
+      try {
+        await ThermalPrinter.connect(address, { timeout: 12000 });
+        result = await send();
+      } catch (err) {
+        return {
+          status: 'failed',
+          reason:
+            result.error?.message ??
+            (err instanceof Error ? err.message : 'Print failed'),
+        };
+      }
+    }
+
+    if (!result.success) {
+      return {
+        status: 'failed',
+        reason: result.error?.message ?? 'Daily summary print failed',
+      };
+    }
+
+    return { status: 'printed' };
+  } catch (err) {
+    return {
+      status: 'failed',
+      reason: err instanceof Error ? err.message : 'Print failed',
+    };
+  }
+}
