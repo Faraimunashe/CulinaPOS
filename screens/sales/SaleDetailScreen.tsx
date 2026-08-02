@@ -17,6 +17,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { BottomSheetModal } from '@/components/BottomSheetModal';
 import * as orderService from '@/services/orderService';
+import * as saleDeleteAdminService from '@/services/saleDeleteAdminService';
 import { useAuthStore } from '@/stores/authStore';
 import { formatMoney } from '@/utils/formatMoney';
 import { colors } from '@/theme';
@@ -47,8 +48,11 @@ export function SaleDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [snack, setSnack] = useState<string | null>(null);
   const [reverseOpen, setReverseOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [reversing, setReversing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [reprinting, setReprinting] = useState(false);
+  const [canDelete, setCanDelete] = useState(false);
 
   const load = useCallback(async () => {
     if (!Number.isFinite(orderId) || orderId <= 0) {
@@ -58,7 +62,13 @@ export function SaleDetailScreen() {
     }
     setLoading(true);
     try {
-      const row = await orderService.getOrderById(orderId);
+      const [row, deleteAllowed] = await Promise.all([
+        orderService.getOrderById(orderId),
+        user?.id
+          ? saleDeleteAdminService.canDeleteSales(user.id)
+          : Promise.resolve(false),
+      ]);
+      setCanDelete(deleteAllowed);
       if (!row) {
         setError('Sale not found');
         setOrder(null);
@@ -71,7 +81,7 @@ export function SaleDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [orderId]);
+  }, [orderId, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -107,6 +117,24 @@ export function SaleDetailScreen() {
       );
     } finally {
       setReversing(false);
+    }
+  };
+
+  const onConfirmDelete = async () => {
+    if (!order || !user) return;
+    setDeleting(true);
+    try {
+      const result = await orderService.deleteOrder(order.id, user.id);
+      setDeleteOpen(false);
+      setSnack(`Sale #${result.order_number} deleted`);
+      router.replace('/(app)/sales');
+    } catch (err) {
+      Alert.alert(
+        'Could not delete',
+        err instanceof Error ? err.message : 'Unexpected error'
+      );
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -238,6 +266,19 @@ export function SaleDetailScreen() {
             </Button>
           ) : null}
 
+          {canDelete ? (
+            <Button
+              mode="outlined"
+              icon="delete-outline"
+              textColor={colors.error}
+              onPress={() => setDeleteOpen(true)}
+              style={[styles.actionBtn, styles.reverseBtn]}
+              contentStyle={styles.actionContent}
+            >
+              Delete sale
+            </Button>
+          ) : null}
+
           {isAdmin && isReversed ? (
             <Text style={styles.reversedNote}>
               This sale was reversed. Inventory from this order has been restored.
@@ -260,6 +301,26 @@ export function SaleDetailScreen() {
           Sale #{order.order_number} for {formatMoney(order.total, symbol)} will
           be marked reversed and stock deducted for this order will be put
           back. This cannot be undone.
+        </Text>
+      </BottomSheetModal>
+
+      <BottomSheetModal
+        visible={deleteOpen}
+        title="Delete this sale?"
+        onDismiss={() => !deleting && setDeleteOpen(false)}
+        primaryLabel="Delete permanently"
+        onPrimary={() => void onConfirmDelete()}
+        primaryLoading={deleting}
+        primaryDisabled={deleting}
+        secondaryLabel="Cancel"
+      >
+        <Text style={styles.confirmBody}>
+          Sale #{order.order_number} for {formatMoney(order.total, symbol)} will
+          be permanently removed from history
+          {isReversed
+            ? '.'
+            : ' and any stock from this sale will be restored.'}{' '}
+          This cannot be undone.
         </Text>
       </BottomSheetModal>
 

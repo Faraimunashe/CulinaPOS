@@ -64,12 +64,25 @@ export interface PaymentCurrencyTotalRow {
   total: number;
 }
 
+export interface CashierPaymentCurrencyTotalRow {
+  cashier_id: number;
+  cashier_name: string;
+  payment_method_id: number | null;
+  payment_method_name: string;
+  currency_id: number | null;
+  currency_name: string;
+  currency_symbol: string;
+  order_count: number;
+  total: number;
+}
+
 export interface DailyCloseSummary {
   order_date: string;
   date_from: string;
   date_to: string;
   order_count: number;
   by_cashier: CashierCurrencyTotalRow[];
+  by_cashier_payment: CashierPaymentCurrencyTotalRow[];
   by_payment: PaymentCurrencyTotalRow[];
   by_currency: CurrencyTotalRow[];
 }
@@ -270,6 +283,31 @@ export async function getDailyCloseSummary(options?: {
     ...params
   );
 
+  const by_cashier_payment =
+    await db.getAllAsync<CashierPaymentCurrencyTotalRow>(
+      `SELECT o.cashier_id,
+              COALESCE(u.full_name, 'Unknown') as cashier_name,
+              o.payment_method_id,
+              COALESCE(pm.name, 'Unknown') as payment_method_name,
+              o.currency_id,
+              COALESCE(c.name, 'Unknown') as currency_name,
+              COALESCE(c.symbol, '$') as currency_symbol,
+              COUNT(*) as order_count,
+              COALESCE(SUM(o.total), 0) as total
+       FROM orders o
+       LEFT JOIN users u ON u.id = o.cashier_id
+       LEFT JOIN payment_methods pm ON pm.id = o.payment_method_id
+       LEFT JOIN currencies c ON c.id = o.currency_id
+       ${where}
+       GROUP BY o.cashier_id, u.full_name,
+                o.payment_method_id, pm.name,
+                o.currency_id, c.name, c.symbol
+       ORDER BY u.full_name COLLATE NOCASE ASC,
+                pm.name COLLATE NOCASE ASC,
+                c.name COLLATE NOCASE ASC`,
+      ...params
+    );
+
   const by_payment = await db.getAllAsync<PaymentCurrencyTotalRow>(
     `SELECT o.payment_method_id,
             COALESCE(pm.name, 'Unknown') as payment_method_name,
@@ -307,6 +345,7 @@ export async function getDailyCloseSummary(options?: {
     date_to: dateTo,
     order_count: orderCountRow?.order_count ?? 0,
     by_cashier,
+    by_cashier_payment,
     by_payment,
     by_currency,
   };

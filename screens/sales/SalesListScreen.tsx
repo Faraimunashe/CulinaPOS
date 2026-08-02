@@ -216,23 +216,27 @@ export function SalesListScreen() {
 
   const applyPreset = (next: DatePreset) => {
     setPreset(next);
+    setPickerTarget(null);
     if (next === 'today') {
       setDateFrom(today);
       setDateTo(today);
       setDraftFrom(today);
       setDraftTo(today);
+      setFiltersOpen(false);
     } else if (next === '7d') {
       const from = daysAgoDate(7);
       setDateFrom(from);
       setDateTo(today);
       setDraftFrom(from);
       setDraftTo(today);
+      setFiltersOpen(false);
     } else if (next === '30d') {
       const from = daysAgoDate(30);
       setDateFrom(from);
       setDateTo(today);
       setDraftFrom(from);
       setDraftTo(today);
+      setFiltersOpen(false);
     } else {
       setDraftFrom(dateFrom);
       setDraftTo(dateTo);
@@ -258,6 +262,8 @@ export function SalesListScreen() {
     setDateFrom(nextFrom);
     setDateTo(nextTo);
     setAppliedReference(nextRef);
+    setFiltersOpen(false);
+    setPickerTarget(null);
     setLoading(true);
     void (async () => {
       try {
@@ -341,8 +347,6 @@ export function SalesListScreen() {
     (appliedReference ? 1 : 0) +
     (preset === 'custom' ? 1 : 0);
 
-  const showFilters = filtersOpen || preset === 'custom';
-
   const pickerValue =
     pickerTarget === 'from'
       ? parseLocalDate(draftFrom)
@@ -350,8 +354,8 @@ export function SalesListScreen() {
         ? parseLocalDate(draftTo)
         : new Date();
 
-  return (
-    <View style={styles.root}>
+  const listHeader = (
+    <View>
       <View style={styles.hero}>
         <Text variant="headlineSmall" style={styles.heroTitle}>
           Sales
@@ -392,13 +396,16 @@ export function SalesListScreen() {
           );
         })}
         <Pressable
-          onPress={() => setFiltersOpen((v) => !v)}
+          onPress={() => {
+            setFiltersOpen((v) => !v);
+            if (filtersOpen) setPickerTarget(null);
+          }}
           style={[styles.presetChip, filtersOpen && styles.presetChipOn]}
           accessibilityRole="button"
-          accessibilityLabel="More filters"
+          accessibilityLabel={filtersOpen ? 'Hide filters' : 'Show filters'}
         >
           <MaterialCommunityIcons
-            name="filter-variant"
+            name={filtersOpen ? 'chevron-up' : 'filter-variant'}
             size={16}
             color={filtersOpen ? colors.onPrimary : colors.primary}
           />
@@ -410,8 +417,42 @@ export function SalesListScreen() {
         </Pressable>
       </View>
 
-      {showFilters ? (
+      {!filtersOpen && preset === 'custom' ? (
+        <Pressable
+          onPress={() => setFiltersOpen(true)}
+          style={styles.rangeSummary}
+          accessibilityRole="button"
+          accessibilityLabel="Edit custom date range"
+        >
+          <MaterialCommunityIcons
+            name="calendar-range"
+            size={16}
+            color={colors.primary}
+          />
+          <Text style={styles.rangeSummaryText}>
+            {formatDisplayDate(dateFrom)} – {formatDisplayDate(dateTo)}
+          </Text>
+          <Text style={styles.rangeSummaryEdit}>Edit</Text>
+        </Pressable>
+      ) : null}
+
+      {filtersOpen ? (
         <View style={styles.filtersPanel}>
+          <View style={styles.filtersPanelHeader}>
+            <Text style={styles.filtersPanelTitle}>Filters</Text>
+            <Pressable
+              onPress={() => {
+                setFiltersOpen(false);
+                setPickerTarget(null);
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Hide filters"
+            >
+              <Text style={styles.filtersHideText}>Hide</Text>
+            </Pressable>
+          </View>
+
           <Text style={styles.filterLabel}>Date range</Text>
           <View style={styles.dateRow}>
             <DatePickerField
@@ -478,17 +519,15 @@ export function SalesListScreen() {
         </View>
       ) : null}
 
-      {pickerTarget && Platform.OS === 'android' ? (
-        <DateTimePicker
-          value={pickerValue}
-          mode="date"
-          display="default"
-          onChange={onAndroidDatePicked}
-          maximumDate={parseLocalDate(today)}
-        />
+      {error ? (
+        <HelperText type="error" visible style={styles.error}>
+          {error}
+        </HelperText>
       ) : null}
 
-      {!loading && !error ? (
+      {loading ? (
+        <ActivityIndicator style={styles.loader} color={colors.primary} />
+      ) : !error ? (
         <View style={styles.totalCard}>
           <View style={styles.totalHeader}>
             <Text style={styles.totalLabel}>Total (completed)</Text>
@@ -542,28 +581,36 @@ export function SalesListScreen() {
           </Pressable>
         </View>
       ) : null}
+    </View>
+  );
 
-      {error ? (
-        <HelperText type="error" visible style={styles.error}>
-          {error}
-        </HelperText>
+  return (
+    <View style={styles.root}>
+      {pickerTarget && Platform.OS === 'android' ? (
+        <DateTimePicker
+          value={pickerValue}
+          mode="date"
+          display="default"
+          onChange={onAndroidDatePicked}
+          maximumDate={parseLocalDate(today)}
+        />
       ) : null}
 
-      {loading ? (
-        <ActivityIndicator style={styles.loader} color={colors.primary} />
-      ) : (
-        <FlatList
-          data={orders}
-          keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.primary}
-            />
-          }
-          ListEmptyComponent={
+      <FlatList
+        data={loading ? [] : orders}
+        keyExtractor={(item) => String(item.id)}
+        ListHeaderComponent={listHeader}
+        contentContainerStyle={styles.list}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+        ListEmptyComponent={
+          loading ? null : (
             <View style={styles.empty}>
               <MaterialCommunityIcons
                 name="receipt-text-outline"
@@ -575,67 +622,67 @@ export function SalesListScreen() {
                 Try a wider date range or clear filters.
               </Text>
             </View>
-          }
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={() =>
-                router.push(`/(app)/sales/${item.id}` as Href)
-              }
-              style={({ pressed }) => [
-                styles.card,
-                pressed && styles.cardPressed,
-              ]}
-            >
-              <View style={styles.cardTop}>
-                <Text style={styles.orderNum}>#{item.order_number}</Text>
-                <View
+          )
+        }
+        renderItem={({ item }) => (
+          <Pressable
+            onPress={() =>
+              router.push(`/(app)/sales/${item.id}` as Href)
+            }
+            style={({ pressed }) => [
+              styles.card,
+              pressed && styles.cardPressed,
+            ]}
+          >
+            <View style={styles.cardTop}>
+              <Text style={styles.orderNum}>#{item.order_number}</Text>
+              <View
+                style={[
+                  styles.statusBadge,
+                  item.status === 'REVERSED'
+                    ? styles.statusReversed
+                    : styles.statusCompleted,
+                ]}
+              >
+                <Text
                   style={[
-                    styles.statusBadge,
+                    styles.statusText,
                     item.status === 'REVERSED'
-                      ? styles.statusReversed
-                      : styles.statusCompleted,
+                      ? styles.statusTextReversed
+                      : styles.statusTextCompleted,
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.statusText,
-                      item.status === 'REVERSED'
-                        ? styles.statusTextReversed
-                        : styles.statusTextCompleted,
-                    ]}
-                  >
-                    {item.status === 'REVERSED' ? 'Reversed' : 'Completed'}
-                  </Text>
-                </View>
+                  {item.status === 'REVERSED' ? 'Reversed' : 'Completed'}
+                </Text>
               </View>
-              <Text style={styles.cardMeta}>
-                {item.order_date}
-                {item.cashier_name ? ` · ${item.cashier_name}` : ''}
-                {item.currency_symbol ? ` · ${item.currency_symbol}` : ''}
+            </View>
+            <Text style={styles.cardMeta}>
+              {item.order_date}
+              {item.cashier_name ? ` · ${item.cashier_name}` : ''}
+              {item.currency_symbol ? ` · ${item.currency_symbol}` : ''}
+            </Text>
+            <View style={styles.cardBottom}>
+              <Text style={styles.cardTotal}>
+                {formatMoney(
+                  item.total,
+                  item.currency_symbol ?? '$'
+                )}
               </Text>
-              <View style={styles.cardBottom}>
-                <Text style={styles.cardTotal}>
-                  {formatMoney(
-                    item.total,
-                    item.currency_symbol ?? '$'
-                  )}
-                </Text>
-                <Text style={styles.cardPay}>
-                  {item.payment_method_name ?? '—'}
-                  {item.item_count != null
-                    ? ` · ${item.item_count} item${item.item_count === 1 ? '' : 's'}`
-                    : ''}
-                </Text>
-                <MaterialCommunityIcons
-                  name="chevron-right"
-                  size={22}
-                  color={colors.outline}
-                />
-              </View>
-            </Pressable>
-          )}
-        />
-      )}
+              <Text style={styles.cardPay}>
+                {item.payment_method_name ?? '—'}
+                {item.item_count != null
+                  ? ` · ${item.item_count} item${item.item_count === 1 ? '' : 's'}`
+                  : ''}
+              </Text>
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={22}
+                color={colors.outline}
+              />
+            </View>
+          </Pressable>
+        )}
+      />
 
       <Snackbar
         visible={!!snack}
@@ -714,6 +761,45 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.outline,
     gap: 12,
+  },
+  filtersPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  filtersPanelTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  filtersHideText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  rangeSummary: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: colors.primaryContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.outline,
+  },
+  rangeSummaryText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  rangeSummaryEdit: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.primary,
   },
   dateRow: {
     flexDirection: 'row',
@@ -900,9 +986,7 @@ const styles = StyleSheet.create({
     marginTop: 40,
   },
   list: {
-    padding: 16,
     paddingBottom: 32,
-    gap: 10,
   },
   empty: {
     alignItems: 'center',
@@ -924,6 +1008,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   card: {
+    marginHorizontal: 16,
     backgroundColor: colors.surface,
     borderRadius: 18,
     padding: 16,

@@ -109,6 +109,13 @@ const NAV_SECTIONS: NavSection[] = [
         match: '/users',
       },
       {
+        label: 'Sale delete access',
+        href: '/(app)/users/sale-delete' as Href,
+        icon: 'shield-key-outline',
+        adminOnly: true,
+        match: '/users/sale-delete',
+      },
+      {
         label: 'Reports',
         href: '/(app)/reports' as Href,
         icon: 'chart-box-outline',
@@ -159,6 +166,11 @@ function isRouteActive(pathname: string, item: NavItem): boolean {
       pathname.endsWith('/(app)') ||
       pathname === '' ||
       pathname === '/index'
+    );
+  }
+  if (item.match === '/users') {
+    return (
+      pathname.includes('/users') && !pathname.includes('/users/sale-delete')
     );
   }
   return pathname.includes(item.match);

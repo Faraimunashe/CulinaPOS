@@ -555,6 +555,101 @@ export async function reverseOrder(
   return order;
 }
 
+/**
+ * Permanently deletes a sale. Restores stock if still COMPLETED.
+ * Only sale-delete admins may call this.
+ */
+export async function deleteOrder(
+  orderId: number,
+  adminUserId: number
+): Promise<{ order_number: number }> {
+  const { canDeleteSales } = await import(
+    '@/services/saleDeleteAdminService'
+  );
+  if (!(await canDeleteSales(adminUserId))) {
+    throw new Error('You do not have permission to delete sales');
+  }
+
+  const db = await getDatabase();
+  const existing = await getOrderById(orderId);
+  if (!existing) throw new Error('Sale not found');
+
+  const now = toIsoNow();
+  const snapshot = {
+    order_number: existing.order_number,
+    order_date: existing.order_date,
+    total: existing.total,
+    status: existing.status,
+  };
+
+  await db.withTransactionAsync(async () => {
+    if (existing.status === 'COMPLETED') {
+      const movements = await db.getAllAsync<{
+        inventory_item_id: number;
+        quantity_change: number;
+      }>(
+        `SELECT inventory_item_id, quantity_change
+         FROM stock_movements
+         WHERE order_id = ? AND movement_type = 'SALE'
+         ORDER BY id ASC`,
+        orderId
+      );
+
+      for (const movement of movements) {
+        const restoreQty = -movement.quantity_change;
+        if (restoreQty === 0) continue;
+
+        const item = await db.getFirstAsync<{ id: number; quantity: number }>(
+          'SELECT id, quantity FROM inventory_items WHERE id = ?',
+          movement.inventory_item_id
+        );
+        if (!item) {
+          throw new Error('Inventory item missing while deleting sale');
+        }
+
+        const before = item.quantity;
+        const after = before + restoreQty;
+        await db.runAsync(
+          'UPDATE inventory_items SET quantity = ?, updated_at = ? WHERE id = ?',
+          after,
+          now,
+          item.id
+        );
+        // Restore qty without linking order_id — order row will be removed
+        await db.runAsync(
+          `INSERT INTO stock_movements
+            (inventory_item_id, movement_type, quantity_before, quantity_change,
+             quantity_after, reason, user_id, order_id, created_at)
+           VALUES (?, 'ADJUSTMENT', ?, ?, ?, ?, ?, NULL, ?)`,
+          item.id,
+          before,
+          restoreQty,
+          after,
+          `Sale deleted · Order #${existing.order_number}`,
+          adminUserId,
+          now
+        );
+      }
+    }
+
+    await db.runAsync(
+      'DELETE FROM stock_movements WHERE order_id = ?',
+      orderId
+    );
+    await db.runAsync('DELETE FROM orders WHERE id = ?', orderId);
+  });
+
+  await writeAuditLog({
+    userId: adminUserId,
+    action: 'ORDER_DELETE',
+    entityType: 'order',
+    entityId: orderId,
+    details: snapshot,
+  });
+
+  return { order_number: snapshot.order_number };
+}
+
 export async function reprintOrder(orderId: number): Promise<string> {
   const order = await getOrderById(orderId);
   if (!order) throw new Error('Sale not found');

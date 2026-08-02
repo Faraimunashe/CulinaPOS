@@ -5,6 +5,7 @@ import { migrate003DirectStockLink } from './migrations/003_direct_stock_link';
 import { migrate004PackStock } from './migrations/004_pack_stock';
 import { migrate005UnitsRename } from './migrations/005_units_rename';
 import { migrate006KitchenCopyOption } from './migrations/006_kitchen_copy_option';
+import { migrate007SaleDeleteAdmins } from './migrations/007_sale_delete_admins';
 
 interface Migration {
   version: number;
@@ -42,6 +43,11 @@ const migrations: Migration[] = [
     version: 6,
     name: '006_kitchen_copy_option',
     up: migrate006KitchenCopyOption,
+  },
+  {
+    version: 7,
+    name: '007_sale_delete_admins',
+    up: migrate007SaleDeleteAdmins,
   },
 ];
 

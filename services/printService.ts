@@ -546,71 +546,80 @@ async function buildDailySummaryNodes(
     text(dashedRule(width)),
   ];
 
-  nodes.push(text('BY CASHIER', { bold: true }));
-  if (summary.by_cashier.length === 0) {
-    nodes.push(text('(none)'));
+  const cashierIds = [
+    ...new Map(
+      summary.by_cashier.map((row) => [
+        row.cashier_id,
+        { id: row.cashier_id, name: row.cashier_name },
+      ])
+    ).values(),
+  ];
+
+  if (cashierIds.length === 0) {
+    nodes.push(text('(no sales)', { align: 'center' }));
   } else {
-    let lastCashier = '';
-    for (const row of summary.by_cashier) {
-      if (row.cashier_name !== lastCashier) {
-        nodes.push(text(clip(row.cashier_name, width), { bold: true }));
-        lastCashier = row.cashier_name;
+    for (const cashier of cashierIds) {
+      const currencyRows = summary.by_cashier.filter(
+        (r) => r.cashier_id === cashier.id
+      );
+      const paymentRows = summary.by_cashier_payment.filter(
+        (r) => r.cashier_id === cashier.id
+      );
+
+      nodes.push(text(clip(cashier.name, width), { bold: true }));
+      nodes.push(text('Currency'));
+      for (const row of currencyRows) {
+        nodes.push(
+          text(
+            padLine(
+              ` ${clip(row.currency_name, 12)} x${row.order_count}`,
+              moneyCompact(row.total, row.currency_symbol, 10),
+              width
+            )
+          )
+        );
       }
-      nodes.push(
-        text(
-          padLine(
-            `  ${row.currency_symbol} x${row.order_count}`,
-            moneyCompact(row.total, row.currency_symbol, 10),
-            width
-          )
-        )
-      );
-    }
-  }
 
-  nodes.push(text(dashedRule(width)));
-  nodes.push(text('BY PAYMENT', { bold: true }));
-  if (summary.by_payment.length === 0) {
-    nodes.push(text('(none)'));
-  } else {
-    let lastPay = '';
-    for (const row of summary.by_payment) {
-      if (row.payment_method_name !== lastPay) {
-        nodes.push(text(clip(row.payment_method_name, width), { bold: true }));
-        lastPay = row.payment_method_name;
+      nodes.push(text('Payment'));
+      if (paymentRows.length === 0) {
+        nodes.push(text(' (none)'));
+      } else {
+        let lastPay = '';
+        for (const row of paymentRows) {
+          if (row.payment_method_name !== lastPay) {
+            nodes.push(text(clip(` ${row.payment_method_name}`, width)));
+            lastPay = row.payment_method_name;
+          }
+          nodes.push(
+            text(
+              padLine(
+                `  ${row.currency_symbol} x${row.order_count}`,
+                moneyCompact(row.total, row.currency_symbol, 10),
+                width
+              )
+            )
+          );
+        }
       }
-      nodes.push(
-        text(
-          padLine(
-            `  ${row.currency_symbol} x${row.order_count}`,
-            moneyCompact(row.total, row.currency_symbol, 10),
-            width
+
+      nodes.push(text('Cashier total', { bold: true }));
+      for (const row of currencyRows) {
+        nodes.push(
+          text(
+            padLine(
+              ` ${clip(row.currency_name, 12)}`,
+              moneyCompact(row.total, row.currency_symbol, 10),
+              width
+            ),
+            { bold: true }
           )
-        )
-      );
+        );
+      }
+      nodes.push(text(dashedRule(width)));
     }
   }
 
-  nodes.push(text(dashedRule(width)));
-  nodes.push(text('BY CURRENCY', { bold: true }));
-  if (summary.by_currency.length === 0) {
-    nodes.push(text('(none)'));
-  } else {
-    for (const row of summary.by_currency) {
-      nodes.push(
-        text(
-          padLine(
-            `${clip(row.currency_name, 12)} x${row.order_count}`,
-            moneyCompact(row.total, row.currency_symbol, 10),
-            width
-          )
-        )
-      );
-    }
-  }
-
-  nodes.push(text(dashedRule(width)));
-  nodes.push(text('GRAND TOTAL', { bold: true, align: 'center' }));
+  nodes.push(text('OVERALL TOTAL', { bold: true, align: 'center' }));
   if (summary.by_currency.length === 0) {
     nodes.push(text('0.00', { align: 'center', bold: true, size: 2 }));
   } else {

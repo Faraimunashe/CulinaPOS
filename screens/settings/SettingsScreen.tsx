@@ -322,6 +322,25 @@ export function SettingsScreen() {
           />
         </Pressable>
         <Pressable
+          onPress={() => router.push('/(app)/users/sale-delete' as Href)}
+          style={({ pressed }) => [
+            styles.linkRow,
+            pressed && styles.linkRowPressed,
+          ]}
+        >
+          <MaterialCommunityIcons
+            name="shield-key-outline"
+            size={22}
+            color={colors.primary}
+          />
+          <Text style={styles.linkText}>Sale delete access</Text>
+          <MaterialCommunityIcons
+            name="chevron-right"
+            size={22}
+            color={colors.outline}
+          />
+        </Pressable>
+        <Pressable
           onPress={() => router.push('/(app)/reports' as Href)}
           style={({ pressed }) => [
             styles.linkRow,
