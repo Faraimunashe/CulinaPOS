@@ -351,7 +351,24 @@ async function buildKitchenNodes(order: Order, paperWidth: 58 | 80) {
     }
   }
 
+  const symbol = order.currency_symbol ?? '$';
   nodes.push(text(dashedRule(width)));
+  nodes.push(
+    text(
+      padLine(
+        'TOTAL',
+        moneyCompact(order.total, symbol, wideWidth - 6),
+        wideWidth
+      ),
+      {
+        bold: true,
+        size: 2,
+      }
+    )
+  );
+  if (order.payment_method_name) {
+    nodes.push(text(clip(`Payment: ${order.payment_method_name}`, width)));
+  }
   nodes.push(feed(1));
   nodes.push(cut());
   return nodes as never[];
@@ -517,8 +534,13 @@ async function buildDailySummaryNodes(
       bold: true,
       size: 2,
     }),
-    text('DAILY SUMMARY', { align: 'center', bold: true, size: 2 }),
-    text(summary.order_date, { align: 'center' }),
+    text('SALES SUMMARY', { align: 'center', bold: true, size: 2 }),
+    text(
+      summary.date_from === summary.date_to
+        ? summary.date_from
+        : `${summary.date_from} - ${summary.date_to}`,
+      { align: 'center' }
+    ),
     text(dashedRule(width)),
     text(`Orders: ${summary.order_count}`, { bold: true }),
     text(dashedRule(width)),
@@ -607,16 +629,20 @@ async function buildDailySummaryNodes(
   }
   nodes.push(text(`Orders: ${summary.order_count}`, { align: 'center' }));
   nodes.push(text(dashedRule(width)));
-  nodes.push(text('End of day report', { align: 'center' }));
+  nodes.push(text('Sales summary report', { align: 'center' }));
   nodes.push(feed(1));
   nodes.push(cut());
 
   return nodes as never[];
 }
 
-/** Prints today's (or a given day's) sales summary Z-report. Always attempts print. */
+/** Prints a sales summary Z-report for a day or filtered date range. */
 export async function printDailySummaryReceipt(options?: {
   orderDate?: string;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  cashierId?: number | null;
+  currencyId?: number | null;
 }): Promise<PrintJobResult> {
   try {
     if (!isNativeAvailable()) {
@@ -631,6 +657,10 @@ export async function printDailySummaryReceipt(options?: {
     const { getDailyCloseSummary } = await import('@/services/reportService');
     const summary = await getDailyCloseSummary({
       orderDate: options?.orderDate,
+      dateFrom: options?.dateFrom,
+      dateTo: options?.dateTo,
+      cashierId: options?.cashierId,
+      currencyId: options?.currencyId,
     });
 
     const { default: ThermalPrinter } = await getDriver();
@@ -677,7 +707,7 @@ export async function printDailySummaryReceipt(options?: {
     if (!result.success) {
       return {
         status: 'failed',
-        reason: result.error?.message ?? 'Daily summary print failed',
+        reason: result.error?.message ?? 'Sales summary print failed',
       };
     }
 

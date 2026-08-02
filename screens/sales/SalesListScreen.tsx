@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -11,14 +12,18 @@ import {
   ActivityIndicator,
   HelperText,
   Searchbar,
+  Snackbar,
   Text,
-  TextInput,
 } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 import { useFocusEffect, useRouter } from 'expo-router';
 import type { Href } from 'expo-router';
 import * as currencyService from '@/services/currencyService';
 import * as orderService from '@/services/orderService';
+import * as printService from '@/services/printService';
 import * as userService from '@/services/userService';
 import { formatMoney } from '@/utils/formatMoney';
 import { colors } from '@/theme';
@@ -30,7 +35,24 @@ function daysAgoDate(days: number): string {
   return orderService.localOrderDate(d);
 }
 
+function parseLocalDate(value: string): Date {
+  const [y, m, d] = value.split('-').map(Number);
+  if (!y || !m || !d) return new Date();
+  return new Date(y, m - 1, d);
+}
+
+function formatDisplayDate(value: string): string {
+  const date = parseLocalDate(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 type DatePreset = 'today' | '7d' | '30d' | 'custom';
+type PickerTarget = 'from' | 'to' | null;
 
 function FilterChipRow<T extends { id: number }>({
   label,
@@ -88,6 +110,38 @@ function FilterChipRow<T extends { id: number }>({
   );
 }
 
+function DatePickerField({
+  label,
+  value,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.dateField,
+        pressed && styles.dateFieldPressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Text style={styles.dateFieldLabel}>{label}</Text>
+      <View style={styles.dateFieldValueRow}>
+        <MaterialCommunityIcons
+          name="calendar"
+          size={18}
+          color={colors.primary}
+        />
+        <Text style={styles.dateFieldValue}>{formatDisplayDate(value)}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
 export function SalesListScreen() {
   const router = useRouter();
   const today = useMemo(() => orderService.localOrderDate(), []);
@@ -98,6 +152,8 @@ export function SalesListScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [snack, setSnack] = useState<string | null>(null);
+  const [printingSummary, setPrintingSummary] = useState(false);
 
   const [preset, setPreset] = useState<DatePreset>('30d');
   const [dateFrom, setDateFrom] = useState(daysAgoDate(30));
@@ -109,6 +165,7 @@ export function SalesListScreen() {
   const [reference, setReference] = useState('');
   const [appliedReference, setAppliedReference] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [pickerTarget, setPickerTarget] = useState<PickerTarget>(null);
 
   const totals = useMemo(
     () => orderService.summarizeSalesTotals(orders),
@@ -179,6 +236,7 @@ export function SalesListScreen() {
     } else {
       setDraftFrom(dateFrom);
       setDraftTo(dateTo);
+      setFiltersOpen(true);
     }
   };
 
@@ -218,6 +276,53 @@ export function SalesListScreen() {
     })();
   };
 
+  const applyPickedDate = (selected: Date) => {
+    const next = orderService.localOrderDate(selected);
+    setPreset('custom');
+    if (pickerTarget === 'from') {
+      setDraftFrom(next);
+      if (next > draftTo) setDraftTo(next);
+    } else if (pickerTarget === 'to') {
+      setDraftTo(next);
+      if (next < draftFrom) setDraftFrom(next);
+    }
+  };
+
+  const onAndroidDatePicked = (
+    event: DateTimePickerEvent,
+    selected?: Date
+  ) => {
+    setPickerTarget(null);
+    if (event.type === 'dismissed' || !selected) return;
+    applyPickedDate(selected);
+  };
+
+  const onIosDatePicked = (_event: DateTimePickerEvent, selected?: Date) => {
+    if (!selected) return;
+    applyPickedDate(selected);
+  };
+
+  const printSummary = async () => {
+    setPrintingSummary(true);
+    try {
+      const result = await printService.printDailySummaryReceipt({
+        dateFrom,
+        dateTo,
+        cashierId,
+        currencyId,
+      });
+      if (result.status === 'printed') {
+        setSnack('Sales summary printed');
+      } else {
+        setSnack(result.reason ?? 'Could not print summary');
+      }
+    } catch (err) {
+      setSnack(err instanceof Error ? err.message : 'Print failed');
+    } finally {
+      setPrintingSummary(false);
+    }
+  };
+
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
@@ -235,6 +340,15 @@ export function SalesListScreen() {
     (currencyId != null ? 1 : 0) +
     (appliedReference ? 1 : 0) +
     (preset === 'custom' ? 1 : 0);
+
+  const showFilters = filtersOpen || preset === 'custom';
+
+  const pickerValue =
+    pickerTarget === 'from'
+      ? parseLocalDate(draftFrom)
+      : pickerTarget === 'to'
+        ? parseLocalDate(draftTo)
+        : new Date();
 
   return (
     <View style={styles.root}>
@@ -296,28 +410,44 @@ export function SalesListScreen() {
         </Pressable>
       </View>
 
-      {filtersOpen ? (
+      {showFilters ? (
         <View style={styles.filtersPanel}>
-          {preset === 'custom' ? (
-            <View style={styles.dateRow}>
-              <TextInput
-                label="Start date"
-                value={draftFrom}
-                onChangeText={setDraftFrom}
-                mode="outlined"
-                placeholder="YYYY-MM-DD"
-                style={styles.dateInput}
-                dense
+          <Text style={styles.filterLabel}>Date range</Text>
+          <View style={styles.dateRow}>
+            <DatePickerField
+              label="Start date"
+              value={draftFrom}
+              onPress={() => {
+                setPreset('custom');
+                setPickerTarget('from');
+              }}
+            />
+            <DatePickerField
+              label="End date"
+              value={draftTo}
+              onPress={() => {
+                setPreset('custom');
+                setPickerTarget('to');
+              }}
+            />
+          </View>
+
+          {pickerTarget && Platform.OS === 'ios' ? (
+            <View style={styles.iosPickerWrap}>
+              <DateTimePicker
+                value={pickerValue}
+                mode="date"
+                display="spinner"
+                onChange={onIosDatePicked}
+                maximumDate={parseLocalDate(today)}
+                style={styles.iosPicker}
               />
-              <TextInput
-                label="End date"
-                value={draftTo}
-                onChangeText={setDraftTo}
-                mode="outlined"
-                placeholder="YYYY-MM-DD"
-                style={styles.dateInput}
-                dense
-              />
+              <Pressable
+                onPress={() => setPickerTarget(null)}
+                style={styles.iosPickerDone}
+              >
+                <Text style={styles.iosPickerDoneText}>Done</Text>
+              </Pressable>
             </View>
           ) : null}
 
@@ -348,6 +478,16 @@ export function SalesListScreen() {
         </View>
       ) : null}
 
+      {pickerTarget && Platform.OS === 'android' ? (
+        <DateTimePicker
+          value={pickerValue}
+          mode="date"
+          display="default"
+          onChange={onAndroidDatePicked}
+          maximumDate={parseLocalDate(today)}
+        />
+      ) : null}
+
       {!loading && !error ? (
         <View style={styles.totalCard}>
           <View style={styles.totalHeader}>
@@ -374,6 +514,32 @@ export function SalesListScreen() {
               </View>
             ))
           )}
+
+          <Pressable
+            onPress={() => void printSummary()}
+            disabled={printingSummary || completedCount === 0}
+            style={({ pressed }) => [
+              styles.printSummaryBtn,
+              pressed && styles.printSummaryBtnPressed,
+              (printingSummary || completedCount === 0) &&
+                styles.printSummaryBtnDisabled,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Print sales summary"
+          >
+            {printingSummary ? (
+              <ActivityIndicator color={colors.onPrimary} />
+            ) : (
+              <MaterialCommunityIcons
+                name="printer"
+                size={18}
+                color={colors.onPrimary}
+              />
+            )}
+            <Text style={styles.printSummaryBtnText}>
+              {printingSummary ? 'Printing…' : 'Print summary'}
+            </Text>
+          </Pressable>
         </View>
       ) : null}
 
@@ -470,6 +636,14 @@ export function SalesListScreen() {
           )}
         />
       )}
+
+      <Snackbar
+        visible={!!snack}
+        onDismiss={() => setSnack(null)}
+        duration={3200}
+      >
+        {snack}
+      </Snackbar>
     </View>
   );
 }
@@ -545,9 +719,55 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
   },
-  dateInput: {
+  dateField: {
     flex: 1,
-    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.outline,
+    backgroundColor: colors.surfaceVariant,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  dateFieldPressed: {
+    opacity: 0.88,
+  },
+  dateFieldLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    color: colors.onSurface,
+    opacity: 0.45,
+  },
+  dateFieldValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dateFieldValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.onSurface,
+  },
+  iosPickerWrap: {
+    borderRadius: 12,
+    backgroundColor: colors.surfaceVariant,
+    overflow: 'hidden',
+  },
+  iosPicker: {
+    alignSelf: 'stretch',
+  },
+  iosPickerDone: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.outline,
+  },
+  iosPickerDoneText: {
+    color: colors.primary,
+    fontWeight: '800',
+    fontSize: 14,
   },
   filterLabel: {
     marginBottom: 6,
@@ -651,6 +871,27 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.primary,
     letterSpacing: -0.3,
+  },
+  printSummaryBtn: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+  },
+  printSummaryBtnPressed: {
+    opacity: 0.9,
+  },
+  printSummaryBtnDisabled: {
+    opacity: 0.45,
+  },
+  printSummaryBtnText: {
+    color: colors.onPrimary,
+    fontWeight: '800',
+    fontSize: 14,
   },
   error: {
     marginHorizontal: 16,

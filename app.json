@@ -31,7 +31,8 @@
         {
           "bluetoothAlwaysPermission": "Culina POS connects to your Bluetooth receipt printer."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "android": {
       "adaptiveIcon": {

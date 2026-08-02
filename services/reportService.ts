@@ -66,6 +66,8 @@ export interface PaymentCurrencyTotalRow {
 
 export interface DailyCloseSummary {
   order_date: string;
+  date_from: string;
+  date_to: string;
   order_count: number;
   by_cashier: CashierCurrencyTotalRow[];
   by_payment: PaymentCurrencyTotalRow[];
@@ -208,18 +210,47 @@ export async function getSalesByPaymentMethod(options?: {
   );
 }
 
-/** End-of-day close report for a local order date (defaults to today). */
+/** Sales close/summary report for a day or date range (defaults to today). */
 export async function getDailyCloseSummary(options?: {
+  /** Single day (legacy). Ignored if dateFrom/dateTo are set. */
   orderDate?: string;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  cashierId?: number | null;
+  currencyId?: number | null;
 }): Promise<DailyCloseSummary> {
   const db = await getDatabase();
-  const orderDate = options?.orderDate ?? localOrderDate();
+  const today = localOrderDate();
+  const dateFrom =
+    options?.dateFrom?.trim() ||
+    options?.orderDate?.trim() ||
+    today;
+  const dateTo =
+    options?.dateTo?.trim() ||
+    options?.orderDate?.trim() ||
+    today;
+
+  const clauses = [
+    'o.status = ?',
+    'o.order_date >= ?',
+    'o.order_date <= ?',
+  ];
+  const params: (string | number)[] = ['COMPLETED', dateFrom, dateTo];
+
+  if (options?.cashierId != null) {
+    clauses.push('o.cashier_id = ?');
+    params.push(options.cashierId);
+  }
+  if (options?.currencyId != null) {
+    clauses.push('o.currency_id = ?');
+    params.push(options.currencyId);
+  }
+
+  const where = `WHERE ${clauses.join(' AND ')}`;
 
   const orderCountRow = await db.getFirstAsync<{ order_count: number }>(
-    `SELECT COUNT(*) as order_count
-     FROM orders
-     WHERE order_date = ? AND status = 'COMPLETED'`,
-    orderDate
+    `SELECT COUNT(*) as order_count FROM orders o ${where}`,
+    ...params
   );
 
   const by_cashier = await db.getAllAsync<CashierCurrencyTotalRow>(
@@ -233,10 +264,10 @@ export async function getDailyCloseSummary(options?: {
      FROM orders o
      LEFT JOIN users u ON u.id = o.cashier_id
      LEFT JOIN currencies c ON c.id = o.currency_id
-     WHERE o.order_date = ? AND o.status = 'COMPLETED'
+     ${where}
      GROUP BY o.cashier_id, u.full_name, o.currency_id, c.name, c.symbol
      ORDER BY u.full_name COLLATE NOCASE ASC, c.name COLLATE NOCASE ASC`,
-    orderDate
+    ...params
   );
 
   const by_payment = await db.getAllAsync<PaymentCurrencyTotalRow>(
@@ -250,10 +281,10 @@ export async function getDailyCloseSummary(options?: {
      FROM orders o
      LEFT JOIN payment_methods pm ON pm.id = o.payment_method_id
      LEFT JOIN currencies c ON c.id = o.currency_id
-     WHERE o.order_date = ? AND o.status = 'COMPLETED'
+     ${where}
      GROUP BY o.payment_method_id, pm.name, o.currency_id, c.name, c.symbol
      ORDER BY pm.name COLLATE NOCASE ASC, c.name COLLATE NOCASE ASC`,
-    orderDate
+    ...params
   );
 
   const by_currency = await db.getAllAsync<CurrencyTotalRow>(
@@ -264,14 +295,16 @@ export async function getDailyCloseSummary(options?: {
             COALESCE(SUM(o.total), 0) as total
      FROM orders o
      LEFT JOIN currencies c ON c.id = o.currency_id
-     WHERE o.order_date = ? AND o.status = 'COMPLETED'
+     ${where}
      GROUP BY o.currency_id, c.name, c.symbol
      ORDER BY c.name COLLATE NOCASE ASC`,
-    orderDate
+    ...params
   );
 
   return {
-    order_date: orderDate,
+    order_date: dateFrom === dateTo ? dateFrom : `${dateFrom} to ${dateTo}`,
+    date_from: dateFrom,
+    date_to: dateTo,
     order_count: orderCountRow?.order_count ?? 0,
     by_cashier,
     by_payment,

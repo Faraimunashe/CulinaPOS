@@ -127,8 +127,11 @@ export async function seedDatabase(db: SQLiteDatabase): Promise<void> {
   );
   if (!printerRow) {
     await db.runAsync(
-      `INSERT INTO printer_settings (device_name, device_address, paper_width, auto_print, updated_at)
-       VALUES (NULL, NULL, 80, 1, ?)`,
+      `INSERT INTO printer_settings (
+         device_name, device_address, paper_width, auto_print,
+         offer_second_kitchen_copy, updated_at
+       )
+       VALUES (NULL, NULL, 80, 1, 1, ?)`,
       now
     );
   }

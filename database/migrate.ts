@@ -4,6 +4,7 @@ import { migrate002CurrencyRates } from './migrations/002_currency_rates';
 import { migrate003DirectStockLink } from './migrations/003_direct_stock_link';
 import { migrate004PackStock } from './migrations/004_pack_stock';
 import { migrate005UnitsRename } from './migrations/005_units_rename';
+import { migrate006KitchenCopyOption } from './migrations/006_kitchen_copy_option';
 
 interface Migration {
   version: number;
@@ -36,6 +37,11 @@ const migrations: Migration[] = [
     version: 5,
     name: '005_units_rename',
     up: migrate005UnitsRename,
+  },
+  {
+    version: 6,
+    name: '006_kitchen_copy_option',
+    up: migrate006KitchenCopyOption,
   },
 ];
 

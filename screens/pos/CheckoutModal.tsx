@@ -10,7 +10,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as orderService from '@/services/orderService';
 import * as printService from '@/services/printService';
-import { askPrintRestaurantCopy } from '@/services/receiptPrintFlow';
+import { promptAndPrintRestaurantCopies } from '@/services/receiptPrintFlow';
 import { useAuthStore } from '@/stores/authStore';
 import { useCartStore } from '@/stores/cartStore';
 import { usePrinterStore } from '@/stores/printerStore';
@@ -145,19 +145,14 @@ export function CheckoutModal({
       onCompleted(completed);
 
       if (customerPrint.status === 'printed') {
-        const wantsRestaurant = await askPrintRestaurantCopy();
-        if (wantsRestaurant) {
-          const kitchen = await printService.printRestaurantCopy(completed, {
-            force: true,
-          });
-          if (kitchen.status === 'printed') {
-            setPrintNote('Customer and restaurant receipts printed');
+        const kitchen = await promptAndPrintRestaurantCopies(completed);
+        if (kitchen.kitchenMessage) {
+          if (kitchen.kitchenMessage.startsWith('restaurant copy failed')) {
+            setPrintNote(`Customer printed · ${kitchen.kitchenMessage}`);
+          } else if (kitchen.kitchenMessage.includes('failed')) {
+            setPrintNote(`Customer printed · ${kitchen.kitchenMessage}`);
           } else {
-            setPrintNote(
-              `Customer printed · restaurant copy failed: ${
-                kitchen.reason ?? 'unknown'
-              }`
-            );
+            setPrintNote(`Customer and ${kitchen.kitchenMessage}`);
           }
         }
       }

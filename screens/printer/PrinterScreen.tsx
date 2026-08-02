@@ -29,6 +29,7 @@ export function PrinterScreen() {
   const deviceAddress = usePrinterStore((s) => s.deviceAddress);
   const autoPrint = usePrinterStore((s) => s.autoPrint);
   const paperWidth = usePrinterStore((s) => s.paperWidth);
+  const offerSecondKitchenCopy = usePrinterStore((s) => s.offerSecondKitchenCopy);
   const connectDevice = usePrinterStore((s) => s.connectDevice);
   const disconnectDevice = usePrinterStore((s) => s.disconnectDevice);
   const hydrate = usePrinterStore((s) => s.hydrate);
@@ -101,8 +102,25 @@ export function PrinterScreen() {
       await printerSettingsService.savePrinterOptions({
         paperWidth,
         autoPrint: value,
+        offerSecondKitchenCopy,
       });
       usePrinterStore.setState({ autoPrint: value });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save option');
+    } finally {
+      setSavingOpts(false);
+    }
+  };
+
+  const setOfferSecondKitchenCopy = async (value: boolean) => {
+    setSavingOpts(true);
+    try {
+      await printerSettingsService.savePrinterOptions({
+        paperWidth,
+        autoPrint,
+        offerSecondKitchenCopy: value,
+      });
+      usePrinterStore.setState({ offerSecondKitchenCopy: value });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save option');
     } finally {
@@ -116,6 +134,7 @@ export function PrinterScreen() {
       await printerSettingsService.savePrinterOptions({
         paperWidth: width,
         autoPrint,
+        offerSecondKitchenCopy,
       });
       usePrinterStore.setState({ paperWidth: width });
     } catch (err) {
@@ -189,6 +208,21 @@ export function PrinterScreen() {
           <Switch
             value={autoPrint}
             onValueChange={(v) => void setAutoPrint(v)}
+            color={colors.primary}
+            disabled={savingOpts}
+          />
+        </View>
+        <View style={styles.switchRow}>
+          <View style={styles.switchCopy}>
+            <Text style={styles.switchTitle}>Offer second kitchen copy</Text>
+            <Text style={styles.switchHint}>
+              After the first restaurant copy, ask whether to print another.
+              Each copy still needs confirmation.
+            </Text>
+          </View>
+          <Switch
+            value={offerSecondKitchenCopy}
+            onValueChange={(v) => void setOfferSecondKitchenCopy(v)}
             color={colors.primary}
             disabled={savingOpts}
           />

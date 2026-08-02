@@ -8,6 +8,7 @@ interface PrinterState {
   deviceAddress: string | null;
   autoPrint: boolean;
   paperWidth: 58 | 80;
+  offerSecondKitchenCopy: boolean;
   nativeAvailable: boolean;
   setConnected: (
     connected: boolean,
@@ -28,6 +29,7 @@ export const usePrinterStore = create<PrinterState>((set, get) => ({
   deviceAddress: null,
   autoPrint: true,
   paperWidth: 80,
+  offerSecondKitchenCopy: true,
   nativeAvailable: true,
   setConnected: (connected, info) =>
     set({
@@ -44,6 +46,7 @@ export const usePrinterStore = create<PrinterState>((set, get) => ({
         deviceAddress: settings.device_address,
         autoPrint: settings.auto_print === 1,
         paperWidth: settings.paper_width,
+        offerSecondKitchenCopy: settings.offer_second_kitchen_copy === 1,
       });
       const restored = await printService.restorePrinterConnection();
       set({
