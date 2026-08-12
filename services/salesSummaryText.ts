@@ -4,8 +4,8 @@ import type {
   ProductSalesRow,
 } from '@/services/reportService';
 
-/** Soft cap per SMS body to limit multi-part credit use. */
-const SMS_MAX = 1200;
+/** Soft cap per SMS body so the gateway accepts the message. */
+const SMS_CHUNK_MAX = 1000;
 
 const MONTHS = [
   'Jan',
@@ -24,8 +24,8 @@ const MONTHS = [
 
 function clampSms(text: string): string {
   const trimmed = text.trim();
-  if (trimmed.length <= SMS_MAX) return trimmed;
-  return `${trimmed.slice(0, SMS_MAX - 1)}...`;
+  if (trimmed.length <= SMS_CHUNK_MAX) return trimmed;
+  return `${trimmed.slice(0, SMS_CHUNK_MAX - 3)}...`;
 }
 
 function formatDisplayDate(iso: string): string {
@@ -87,55 +87,133 @@ function aggregatePayments(
   return [...map.values()].sort((a, b) => b.total - a.total);
 }
 
+function itemsHeaderLines(
+  title: string,
+  period: string,
+  part: number,
+  totalParts: number
+): string[] {
+  const label =
+    totalParts > 1 ? `ITEMS SOLD (${part}/${totalParts})` : 'ITEMS SOLD';
+  return [title, label, period, divider()];
+}
+
+function fitProductLine(line: string, maxLen: number): string {
+  if (line.length <= maxLen) return line;
+  if (maxLen <= 3) return line.slice(0, maxLen);
+  return `${line.slice(0, maxLen - 3)}...`;
+}
+
+function packProductLines(
+  productLines: string[],
+  headerBudget: number,
+  footerBudget: number
+): string[][] {
+  const bodyBudget = Math.max(24, SMS_CHUNK_MAX - headerBudget - footerBudget - 2);
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let currentLen = 0;
+
+  for (const raw of productLines) {
+    const line = fitProductLine(raw, bodyBudget);
+    const addLen = line.length + (current.length > 0 ? 1 : 0);
+    if (current.length > 0 && currentLen + addLen > bodyBudget) {
+      chunks.push(current);
+      current = [line];
+      currentLen = line.length;
+    } else {
+      current.push(line);
+      currentLen += addLen;
+    }
+  }
+
+  if (current.length > 0 || chunks.length === 0) {
+    chunks.push(current);
+  }
+  return chunks;
+}
+
 /**
- * SMS 1 — products sold: qty, name, line total.
+ * Items sold as one or more SMS bodies (split on whole product lines).
+ * Totals appear only on the last part.
  */
-export function formatItemsSoldText(input: {
+export function formatItemsSoldChunks(input: {
   restaurantName?: string;
   dateFrom: string;
   dateTo: string;
   products: ProductSalesRow[];
-}): string {
+}): string[] {
   const title = input.restaurantName?.trim() || 'Culina POS';
   const period = formatPeriod(input.dateFrom, input.dateTo);
-  const lines: string[] = [];
-
-  lines.push(title);
-  lines.push('ITEMS SOLD');
-  lines.push(period);
-  lines.push(divider());
 
   if (input.products.length === 0) {
-    lines.push('No items sold in this period.');
-    return clampSms(lines.join('\n'));
+    return [
+      clampSms(
+        [...itemsHeaderLines(title, period, 1, 1), 'No items sold in this period.'].join(
+          '\n'
+        )
+      ),
+    ];
   }
 
   let totalQty = 0;
   let salesTotal = 0;
+  const productLines: string[] = [];
 
   for (const row of input.products) {
     const qty = Number(row.quantity) || 0;
     const lineTotal = Number(row.total) || 0;
     totalQty += qty;
     salesTotal += lineTotal;
-    lines.push(
+    productLines.push(
       `${qtyLabel(qty)} x ${row.product_name} - ${money(lineTotal)}`
     );
   }
 
-  lines.push(divider());
-  lines.push(
+  const totalsFooter = [
+    divider(),
     `${qtyLabel(totalQty)} units / ${input.products.length} product${
       input.products.length === 1 ? '' : 's'
-    }`
-  );
-  lines.push(`Items total - ${money(salesTotal)}`);
+    }`,
+    `Items total - ${money(salesTotal)}`,
+  ];
+  const continuedFooterSample = [divider(), 'Continued in 99/99'];
 
-  return clampSms(lines.join('\n'));
+  const headerBudget = itemsHeaderLines(title, period, 99, 99).join('\n').length;
+  const footerBudget = Math.max(
+    totalsFooter.join('\n').length,
+    continuedFooterSample.join('\n').length
+  );
+
+  const lineChunks = packProductLines(productLines, headerBudget, footerBudget);
+  const totalParts = lineChunks.length;
+
+  return lineChunks.map((lines, index) => {
+    const part = index + 1;
+    const isLast = part === totalParts;
+    const footer = isLast
+      ? totalsFooter
+      : [divider(), `Continued in ${part + 1}/${totalParts}`];
+    return clampSms(
+      [...itemsHeaderLines(title, period, part, totalParts), ...lines, ...footer].join(
+        '\n'
+      )
+    );
+  });
+}
+
+/** Single-string helper (joins chunks with a blank line). Prefer formatItemsSoldChunks for sending. */
+export function formatItemsSoldText(input: {
+  restaurantName?: string;
+  dateFrom: string;
+  dateTo: string;
+  products: ProductSalesRow[];
+}): string {
+  return formatItemsSoldChunks(input).join('\n\n');
 }
 
 /**
- * SMS 2 — sales summary with payment methods (single-currency, no currency labels).
+ * Sales summary with payment methods (single-currency, no currency labels).
  */
 export function formatSalesSummaryText(
   summary: DailyCloseSummary,

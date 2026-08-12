@@ -1,7 +1,7 @@
 import * as settingsService from '@/services/settingsService';
 import * as reportService from '@/services/reportService';
 import {
-  formatItemsSoldText,
+  formatItemsSoldChunks,
   formatSalesSummaryText,
 } from '@/services/salesSummaryText';
 import * as smsSettingsService from '@/services/smsSettingsService';
@@ -82,9 +82,9 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * One button click → two SMS per recipient:
- * 1) Items sold
- * 2) Sales summary
+ * One button click → N SMS per recipient:
+ * 1..N-1) Items sold chunks (if long)
+ * last) Sales summary
  */
 export async function sendSalesSummarySms(options?: {
   dateFrom?: string | null;
@@ -139,13 +139,14 @@ export async function sendSalesSummarySms(options?: {
   ]);
 
   const name = restaurant.restaurantName;
-  const itemsBody = formatItemsSoldText({
+  const itemChunks = formatItemsSoldChunks({
     restaurantName: name,
     dateFrom: summary.date_from,
     dateTo: summary.date_to,
     products,
   });
   const summaryBody = formatSalesSummaryText(summary, name);
+  const outbound = [...itemChunks, summaryBody];
 
   const results: SmsSendResult['results'] = [];
 
@@ -153,25 +154,18 @@ export async function sendSalesSummarySms(options?: {
     let messagesSent = 0;
     let lastCredits: number | undefined;
     try {
-      const first = await postSms({
-        apiUrl: settings.apiUrl,
-        apiKey,
-        to,
-        sender: settings.sender,
-        message: itemsBody,
-      });
-      messagesSent = 1;
-      lastCredits = first.smsCredits;
-      await delay(350);
-      const second = await postSms({
-        apiUrl: settings.apiUrl,
-        apiKey,
-        to,
-        sender: settings.sender,
-        message: summaryBody,
-      });
-      messagesSent = 2;
-      lastCredits = second.smsCredits ?? lastCredits;
+      for (let i = 0; i < outbound.length; i++) {
+        if (i > 0) await delay(350);
+        const posted = await postSms({
+          apiUrl: settings.apiUrl,
+          apiKey,
+          to,
+          sender: settings.sender,
+          message: outbound[i],
+        });
+        messagesSent += 1;
+        lastCredits = posted.smsCredits ?? lastCredits;
+      }
       results.push({
         to,
         ok: true,
@@ -192,14 +186,18 @@ export async function sendSalesSummarySms(options?: {
   const okCount = results.filter((r) => r.ok).length;
   const msgCount = results.reduce((n, r) => n + (r.messagesSent ?? 0), 0);
   const credits = results.map((r) => r.smsCredits).find((c) => c != null);
+  const itemPartLabel =
+    itemChunks.length === 1
+      ? '1 items SMS'
+      : `${itemChunks.length} items SMS parts`;
 
   let status: SmsSendResult['status'] = 'failed';
   let message = 'SMS send failed';
   if (okCount === results.length) {
     status = 'sent';
-    message = `Sent ${msgCount} SMS (items + summary) to ${okCount} recipient${okCount === 1 ? '' : 's'}${
-      credits != null ? ` · ${credits} credits left` : ''
-    }`;
+    message = `Sent ${msgCount} SMS (${itemPartLabel} + summary) to ${okCount} recipient${
+      okCount === 1 ? '' : 's'
+    }${credits != null ? ` · ${credits} credits left` : ''}`;
   } else if (okCount > 0 || msgCount > 0) {
     status = 'partial';
     const failed = results.find((r) => !r.ok);
@@ -215,6 +213,8 @@ export async function sendSalesSummarySms(options?: {
       entityType: 'report',
       details: {
         status,
+        item_chunks: itemChunks.length,
+        messages_per_recipient: outbound.length,
         recipients: results.map((r) => ({
           to: r.to,
           ok: r.ok,

@@ -122,8 +122,8 @@ export function SmsSettingsScreen() {
           SMS
         </Text>
         <Text style={styles.subtitle}>
-          Sends two SMS per recipient on one tap: items sold, then sales
-          summary. Uses sms.localhost.co.zw.
+          Sends items sold (split into parts if long) then a sales summary.
+          Uses sms.localhost.co.zw.
         </Text>
       </View>
 
