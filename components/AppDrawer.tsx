@@ -129,6 +129,13 @@ const NAV_SECTIONS: NavSection[] = [
         adminOnly: true,
         match: '/settings',
       },
+      {
+        label: 'SMS',
+        href: '/(app)/settings/sms' as Href,
+        icon: 'message-text-outline',
+        adminOnly: true,
+        match: '/settings/sms',
+      },
     ],
   },
   {
@@ -171,6 +178,11 @@ function isRouteActive(pathname: string, item: NavItem): boolean {
   if (item.match === '/users') {
     return (
       pathname.includes('/users') && !pathname.includes('/users/sale-delete')
+    );
+  }
+  if (item.match === '/settings') {
+    return (
+      pathname.includes('/settings') && !pathname.includes('/settings/sms')
     );
   }
   return pathname.includes(item.match);

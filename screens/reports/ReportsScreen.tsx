@@ -12,9 +12,11 @@ import { useFocusEffect } from 'expo-router';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
 import * as reportService from '@/services/reportService';
 import * as printService from '@/services/printService';
+import * as smsService from '@/services/smsService';
 import { formatStockLabel } from '@/services/inventoryService';
 import { formatMoney } from '@/utils/formatMoney';
 import { colors } from '@/theme';
+import { useAuthStore } from '@/stores/authStore';
 import type { InventoryItem } from '@/types';
 import type {
   CashierSalesRow,
@@ -58,6 +60,7 @@ function formatReportDate(isoDate: string): string {
 
 export function ReportsScreen() {
   const isAdmin = useRequireAdmin();
+  const actorId = useAuthStore((s) => s.user?.id);
   const [tab, setTab] = useState<TabKey>('overview');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -75,6 +78,7 @@ export function ReportsScreen() {
     []
   );
   const [printingDay, setPrintingDay] = useState(false);
+  const [sendingSms, setSendingSms] = useState(false);
   const [snack, setSnack] = useState<string | null>(null);
 
   const load = useCallback(async (opts?: { soft?: boolean }) => {
@@ -160,6 +164,20 @@ export function ReportsScreen() {
       setSnack(err instanceof Error ? err.message : 'Print failed');
     } finally {
       setPrintingDay(false);
+    }
+  };
+
+  const sendTodaySms = async () => {
+    setSendingSms(true);
+    try {
+      const result = await smsService.sendSalesSummarySms({
+        actorId: actorId ?? null,
+      });
+      setSnack(result.message);
+    } catch (err) {
+      setSnack(err instanceof Error ? err.message : 'SMS send failed');
+    } finally {
+      setSendingSms(false);
     }
   };
 
@@ -316,6 +334,31 @@ export function ReportsScreen() {
                 )}
                 <Text style={styles.printDayBtnText}>
                   {printingDay ? 'Printing…' : "Print today's summary"}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => void sendTodaySms()}
+                disabled={sendingSms}
+                style={({ pressed }) => [
+                  styles.smsDayBtn,
+                  pressed && styles.printDayBtnPressed,
+                  sendingSms && styles.printDayBtnDisabled,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Send today's summary by SMS"
+              >
+                {sendingSms ? (
+                  <ActivityIndicator color={colors.onPrimary} />
+                ) : (
+                  <MaterialCommunityIcons
+                    name="message-text-outline"
+                    size={20}
+                    color={colors.onPrimary}
+                  />
+                )}
+                <Text style={styles.printDayBtnText}>
+                  {sendingSms ? 'Sending…' : 'Send SMS summary'}
                 </Text>
               </Pressable>
 
@@ -830,6 +873,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
     backgroundColor: colors.primary,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  smsDayBtn: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: colors.secondary,
     borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 16,

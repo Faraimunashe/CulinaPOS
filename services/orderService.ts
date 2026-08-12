@@ -10,6 +10,7 @@ import type {
   PosProduct,
   Product,
   SalesTotalByCurrency,
+  SalesTotalByPayment,
 } from '@/types';
 import { buildConvertedPrices } from '@/services/currencyService';
 import { listProducts } from '@/services/productService';
@@ -461,6 +462,32 @@ export function summarizeSalesTotals(orders: Order[]): SalesTotalByCurrency[] {
   return Array.from(map.values()).sort((a, b) =>
     a.currency_name.localeCompare(b.currency_name)
   );
+}
+
+/** Sums COMPLETED orders in the list, grouped by payment method. */
+export function summarizeSalesByPayment(
+  orders: Order[]
+): SalesTotalByPayment[] {
+  const map = new Map<string, SalesTotalByPayment>();
+  for (const order of orders) {
+    if (order.status !== 'COMPLETED') continue;
+    const key = String(order.payment_method_id ?? 'none');
+    const existing = map.get(key);
+    if (existing) {
+      existing.total =
+        Math.round((existing.total + order.total) * 100) / 100;
+      existing.order_count += 1;
+    } else {
+      map.set(key, {
+        payment_method_id: order.payment_method_id,
+        payment_method_name: order.payment_method_name?.trim() || 'Unknown',
+        currency_symbol: order.currency_symbol ?? '$',
+        total: order.total,
+        order_count: 1,
+      });
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => b.total - a.total);
 }
 
 /**

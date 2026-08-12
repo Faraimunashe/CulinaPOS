@@ -322,6 +322,25 @@ export function SettingsScreen() {
           />
         </Pressable>
         <Pressable
+          onPress={() => router.push('/(app)/settings/sms' as Href)}
+          style={({ pressed }) => [
+            styles.linkRow,
+            pressed && styles.linkRowPressed,
+          ]}
+        >
+          <MaterialCommunityIcons
+            name="message-text-outline"
+            size={22}
+            color={colors.primary}
+          />
+          <Text style={styles.linkText}>SMS summary</Text>
+          <MaterialCommunityIcons
+            name="chevron-right"
+            size={22}
+            color={colors.outline}
+          />
+        </Pressable>
+        <Pressable
           onPress={() => router.push('/(app)/users/sale-delete' as Href)}
           style={({ pressed }) => [
             styles.linkRow,

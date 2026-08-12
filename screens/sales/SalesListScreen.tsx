@@ -25,6 +25,8 @@ import * as currencyService from '@/services/currencyService';
 import * as orderService from '@/services/orderService';
 import * as printService from '@/services/printService';
 import * as userService from '@/services/userService';
+import * as smsService from '@/services/smsService';
+import { useAuthStore } from '@/stores/authStore';
 import { formatMoney } from '@/utils/formatMoney';
 import { colors } from '@/theme';
 import type { Currency, Order, SafeUser } from '@/types';
@@ -144,6 +146,7 @@ function DatePickerField({
 
 export function SalesListScreen() {
   const router = useRouter();
+  const actorId = useAuthStore((s) => s.user?.id);
   const today = useMemo(() => orderService.localOrderDate(), []);
 
   const [orders, setOrders] = useState<Order[]>([]);
@@ -154,11 +157,12 @@ export function SalesListScreen() {
   const [error, setError] = useState<string | null>(null);
   const [snack, setSnack] = useState<string | null>(null);
   const [printingSummary, setPrintingSummary] = useState(false);
+  const [sendingSms, setSendingSms] = useState(false);
 
-  const [preset, setPreset] = useState<DatePreset>('30d');
-  const [dateFrom, setDateFrom] = useState(daysAgoDate(30));
+  const [preset, setPreset] = useState<DatePreset>('today');
+  const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo] = useState(today);
-  const [draftFrom, setDraftFrom] = useState(daysAgoDate(30));
+  const [draftFrom, setDraftFrom] = useState(today);
   const [draftTo, setDraftTo] = useState(today);
   const [cashierId, setCashierId] = useState<number | null>(null);
   const [currencyId, setCurrencyId] = useState<number | null>(null);
@@ -167,10 +171,18 @@ export function SalesListScreen() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [pickerTarget, setPickerTarget] = useState<PickerTarget>(null);
 
-  const totals = useMemo(
-    () => orderService.summarizeSalesTotals(orders),
+  const paymentTotals = useMemo(
+    () => orderService.summarizeSalesByPayment(orders),
     [orders]
   );
+  const grandTotal = useMemo(() => {
+    const amount = paymentTotals.reduce((sum, row) => sum + row.total, 0);
+    const symbol = paymentTotals[0]?.currency_symbol ?? '$';
+    return {
+      amount: Math.round(amount * 100) / 100,
+      symbol,
+    };
+  }, [paymentTotals]);
   const completedCount = useMemo(
     () => orders.filter((o) => o.status === 'COMPLETED').length,
     [orders]
@@ -326,6 +338,24 @@ export function SalesListScreen() {
       setSnack(err instanceof Error ? err.message : 'Print failed');
     } finally {
       setPrintingSummary(false);
+    }
+  };
+
+  const sendSmsSummary = async () => {
+    setSendingSms(true);
+    try {
+      const result = await smsService.sendSalesSummarySms({
+        dateFrom,
+        dateTo,
+        cashierId,
+        currencyId,
+        actorId: actorId ?? null,
+      });
+      setSnack(result.message);
+    } catch (err) {
+      setSnack(err instanceof Error ? err.message : 'SMS send failed');
+    } finally {
+      setSendingSms(false);
     }
   };
 
@@ -530,28 +560,48 @@ export function SalesListScreen() {
       ) : !error ? (
         <View style={styles.totalCard}>
           <View style={styles.totalHeader}>
-            <Text style={styles.totalLabel}>Total (completed)</Text>
+            <Text style={styles.totalLabel}>Totals</Text>
             <Text style={styles.totalCount}>
               {completedCount} sale{completedCount === 1 ? '' : 's'}
             </Text>
           </View>
-          {totals.length === 0 ? (
+
+          {paymentTotals.length === 0 ? (
             <Text style={styles.totalEmpty}>—</Text>
           ) : (
-            totals.map((row) => (
-              <View key={String(row.currency_id ?? 'none')} style={styles.totalRow}>
-                <Text style={styles.totalCurrency}>
-                  {row.currency_name}
-                  <Text style={styles.totalCurrencyCount}>
-                    {' '}
-                    · {row.order_count}
-                  </Text>
-                </Text>
-                <Text style={styles.totalAmount}>
-                  {formatMoney(row.total, row.currency_symbol)}
+            <>
+              <View style={styles.paymentBlock}>
+                {paymentTotals.map((row, index) => (
+                  <View
+                    key={String(row.payment_method_id ?? row.payment_method_name)}
+                    style={[
+                      styles.paymentRow,
+                      index < paymentTotals.length - 1 && styles.paymentRowDivider,
+                    ]}
+                  >
+                    <View style={styles.paymentMeta}>
+                      <Text style={styles.paymentName} numberOfLines={1}>
+                        {row.payment_method_name}
+                      </Text>
+                      <Text style={styles.paymentCount}>
+                        {row.order_count} sale
+                        {row.order_count === 1 ? '' : 's'}
+                      </Text>
+                    </View>
+                    <Text style={styles.paymentAmount}>
+                      {formatMoney(row.total, row.currency_symbol)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.grandTotalRow}>
+                <Text style={styles.grandTotalLabel}>Grand total</Text>
+                <Text style={styles.grandTotalAmount}>
+                  {formatMoney(grandTotal.amount, grandTotal.symbol)}
                 </Text>
               </View>
-            ))
+            </>
           )}
 
           <Pressable
@@ -577,6 +627,32 @@ export function SalesListScreen() {
             )}
             <Text style={styles.printSummaryBtnText}>
               {printingSummary ? 'Printing…' : 'Print summary'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => void sendSmsSummary()}
+            disabled={sendingSms || completedCount === 0}
+            style={({ pressed }) => [
+              styles.smsSummaryBtn,
+              pressed && styles.smsSummaryBtnPressed,
+              (sendingSms || completedCount === 0) &&
+                styles.printSummaryBtnDisabled,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Send sales summary by SMS"
+          >
+            {sendingSms ? (
+              <ActivityIndicator color={colors.onPrimary} />
+            ) : (
+              <MaterialCommunityIcons
+                name="message-text-outline"
+                size={18}
+                color={colors.onPrimary}
+              />
+            )}
+            <Text style={styles.printSummaryBtnText}>
+              {sendingSms ? 'Sending…' : 'Send SMS'}
             </Text>
           </Pressable>
         </View>
@@ -936,27 +1012,68 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.primary,
   },
-  totalRow: {
+  paymentBlock: {
+    borderRadius: 12,
+    backgroundColor: 'rgba(27, 67, 50, 0.06)',
+    overflow: 'hidden',
+  },
+  paymentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  paymentRowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(27, 67, 50, 0.14)',
+  },
+  paymentMeta: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  paymentName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  paymentCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+    opacity: 0.55,
+  },
+  paymentAmount: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: -0.2,
+  },
+  grandTotalRow: {
+    marginTop: 12,
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
     gap: 12,
-    paddingVertical: 2,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(27, 67, 50, 0.2)',
   },
-  totalCurrency: {
-    fontSize: 14,
-    fontWeight: '700',
+  grandTotalLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
     color: colors.primary,
+    opacity: 0.7,
   },
-  totalCurrencyCount: {
-    fontWeight: '600',
-    opacity: 0.55,
-  },
-  totalAmount: {
-    fontSize: 20,
+  grandTotalAmount: {
+    fontSize: 24,
     fontWeight: '800',
     color: colors.primary,
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
   },
   printSummaryBtn: {
     marginTop: 12,
@@ -967,6 +1084,19 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     backgroundColor: colors.primary,
+  },
+  smsSummaryBtn: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: colors.secondary,
+  },
+  smsSummaryBtnPressed: {
+    opacity: 0.9,
   },
   printSummaryBtnPressed: {
     opacity: 0.9,

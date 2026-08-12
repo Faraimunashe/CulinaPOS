@@ -17,4 +17,8 @@ export const SETTINGS_KEYS = {
   primaryCurrencyId: 'primary_currency_id',
   licenseActivatedAt: 'license_activated_at',
   licenseKeyUsed: 'license_key_used',
+  smsApiUrl: 'sms_api_url',
+  smsSender: 'sms_sender',
+  smsRecipient1: 'sms_recipient_1',
+  smsRecipient2: 'sms_recipient_2',
 } as const;

@@ -31,7 +31,13 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+
+# Local SMS API key (never commit)
+config/sms.secrets.ts
+# Local SMS API key (never commit)
+config/sms.secrets.ts
 
 # typescript
 *.tsbuildinfo

@@ -183,6 +183,48 @@ export async function getSalesByProduct(options?: {
   );
 }
 
+/** Products sold in a date range (same filters as daily close / SMS). */
+export async function getProductSalesForRange(options?: {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  cashierId?: number | null;
+  currencyId?: number | null;
+}): Promise<ProductSalesRow[]> {
+  const db = await getDatabase();
+  const today = localOrderDate();
+  const dateFrom = options?.dateFrom?.trim() || today;
+  const dateTo = options?.dateTo?.trim() || today;
+
+  const clauses = [
+    'o.status = ?',
+    'o.order_date >= ?',
+    'o.order_date <= ?',
+  ];
+  const params: (string | number)[] = ['COMPLETED', dateFrom, dateTo];
+
+  if (options?.cashierId != null) {
+    clauses.push('o.cashier_id = ?');
+    params.push(options.cashierId);
+  }
+  if (options?.currencyId != null) {
+    clauses.push('o.currency_id = ?');
+    params.push(options.currencyId);
+  }
+
+  return db.getAllAsync<ProductSalesRow>(
+    `SELECT oi.product_id,
+            oi.product_name,
+            COALESCE(SUM(oi.quantity), 0) as quantity,
+            COALESCE(SUM(oi.line_total), 0) as total
+     FROM order_items oi
+     INNER JOIN orders o ON o.id = oi.order_id
+     WHERE ${clauses.join(' AND ')}
+     GROUP BY oi.product_id, oi.product_name
+     ORDER BY quantity DESC, oi.product_name COLLATE NOCASE ASC`,
+    ...params
+  );
+}
+
 export async function getSalesByCashier(options?: {
   days?: number;
 }): Promise<CashierSalesRow[]> {

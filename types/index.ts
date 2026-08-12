@@ -242,6 +242,14 @@ export interface SalesTotalByCurrency {
   order_count: number;
 }
 
+export interface SalesTotalByPayment {
+  payment_method_id: number | null;
+  payment_method_name: string;
+  currency_symbol: string;
+  total: number;
+  order_count: number;
+}
+
 export interface CheckoutInput {
   cashierId: number;
   paymentMethodId: number;
